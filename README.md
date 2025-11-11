@@ -1,2 +1,2 @@
-# mlops
+# MLOps
 MLOPS on cloud
