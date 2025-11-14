@@ -4,3 +4,10 @@ pylint # for linting
 flake8 # alt for lintng
 black # formatting tool
 ipython
+pandas
+numpy
+matplotlib
+seaborn
+jupyterlab
+ipykernel
+jupyter
