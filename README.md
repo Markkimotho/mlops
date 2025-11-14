@@ -69,15 +69,15 @@ flowchart LR
 - Canary or blue/green deployment strategies
 - Model registry integration
 
-#### **3. Monitor**
-- Detect data drift and concept drift
-- Track latency, throughput, error rates
-- Alert on prediction anomalies
-
-#### **4. Audit Trail & Artifacts**
+#### **3. Audit Trail & Artifacts**
 - Full lineage tracking (data → code → model → environment)
 - Compliance and governance records
 - Insights for debugging and retraining decisions
+
+#### **4. Monitor**
+- Detect data drift and concept drift
+- Track latency, throughput, error rates
+- Alert on prediction anomalies
 
 ## CI/CD Pipeline for ML
 
