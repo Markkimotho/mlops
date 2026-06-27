@@ -1,4 +1,4 @@
-.PHONY: install run test test-go test-python lint format build
+.PHONY: install run test test-go test-python lint format build verify
 
 install:
 	python -m pip install -r requirements.txt
@@ -10,7 +10,7 @@ run:
 test: test-go test-python
 
 test-go:
-	cd go && go test ./...
+	cd go && go test -buildvcs=false ./...
 
 test-python:
 	python -m pytest python/tests -q
@@ -28,3 +28,8 @@ build:
 	cd go && for cmd in gateway operator trace-proxy feature-gateway storage-proxy metrics-collector cli; do \
 		go build -buildvcs=false -o ../bin/mlaiops-$$cmd ./cmd/$$cmd; \
 	done
+
+verify: test lint build
+	node --check go/cmd/gateway/web/app.js
+	python -m compileall -q python/mlaiops_sdk
+	! rg -i '\b(mlrun|nuclio|v3io|iguazio)\b' go config

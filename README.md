@@ -1,82 +1,89 @@
 # Nexus: ml-ai-ops-platform
 
-Nexus is the first runnable vertical slice of the platform described in
-[`mlops-platform-prd.md`](mlops-platform-prd.md). It gives novice ML engineers a guided
-golden path while keeping the operational boundaries experienced platform engineers need.
+Nexus is a self-hosted control plane for classical ML, data-centric AI, and agentic AI
+workloads. Its architecture follows [`mlops-platform-prd.md`](mlops-platform-prd.md): Go owns
+infrastructure services and Python owns the ML-facing SDK and workload primitives.
 
-## What works now
+## Backend implemented
 
-- A dependency-light Go control-plane gateway
-- A responsive workspace for projects, pipeline runs, shared assets, and component health
-- Guided project creation with tabular ML, forecasting, RAG/agent, and expert templates
-- Pipeline submission contracts with honest queued/simulated state
-- A typed Python SDK suitable for notebooks and training jobs
-- OpenAPI discovery at `/api/openapi.json`
-- Unit and API tests in both Go and Python
+- Durable control-plane API for projects, pipelines, models, agents, tools, connections, and
+  immutable audit events
+- Versioned Kubernetes CRDs, RBAC, network isolation, and agent reconciliation plans
+- Online feature gateway with a Feast-compatible request shape
+- S3/MinIO proxy generating bounded AWS SigV4 URLs
+- OpenAI-compatible LLM reverse proxy with asynchronous trace emission
+- Prometheus component-health collector
+- Standard API clients for KFP, MLflow, Langfuse, and Kafka REST Proxy
+- Typed Python SDK, pipeline compiler, tool registry, and tracing primitive
+- Single-binary CLI for common platform operations
+- Container and Kubernetes deployment assets
 
-The component page deliberately marks MLflow, Feast, KServe, Kafka, MinIO, and Langfuse as
-`not configured`. The MVP defines their integration seams; it does not claim those production
-systems exist until they are connected.
+The web workspace is intentionally lightweight; backend contracts and operational safety are
+the current priority.
 
-## Run it
+## Quick start
 
-Requirements: Go 1.22+.
+Requires Go 1.22+ and Python 3.11+.
 
 ```bash
+make install
 make run
 ```
 
-Open <http://localhost:8080>. There are no database or JavaScript build dependencies for the
-local experience.
-
-## Test it
-
-```bash
-python -m pip install -r requirements.txt
-make test
-make lint
-```
-
-## Use the Python SDK
-
-Install the local package:
-
-```bash
-python -m pip install -e ./python
-python examples/quickstart.py
-```
-
-Or use it directly:
+Open <http://localhost:8080>, or use the SDK:
 
 ```python
 from mlaiops_sdk import MLAIOpsClient
 
-with MLAIOpsClient("http://localhost:8080") as client:
+with MLAIOpsClient(actor="engineer@example.com") as client:
     project = client.create_project("churn", template="tabular-classification")
     run = client.submit_pipeline(project.id)
+```
+
+## Build and verify
+
+```bash
+make verify
+```
+
+Builds produced in `bin/`:
+
+```text
+mlaiops-gateway
+mlaiops-operator
+mlaiops-trace-proxy
+mlaiops-feature-gateway
+mlaiops-storage-proxy
+mlaiops-metrics-collector
+mlaiops-cli
 ```
 
 ## Architecture
 
 ```text
-Browser workspace ──HTTP/JSON──> Go gateway ──adapter contracts──> Kubernetes / OSS services
-                                      ▲
-Python SDK / notebooks ───────────────┘
+Python SDK / CLI / UI
+          │ HTTP + JSON
+          ▼
+  Go control-plane gateway ───────────────► durable audit/state
+          │
+          ├── KFP / Argo       (pipelines)
+          ├── MLflow           (experiments and registry)
+          ├── KServe           (model and LLM serving)
+          ├── Feast / Redis    (features)
+          ├── MinIO / S3       (artifacts)
+          ├── Kafka            (events)
+          └── Langfuse         (LLM traces and prompts)
+
+  Kubernetes CRDs ──► operator reconciliation ──► workloads and traffic
 ```
 
-The current store is intentionally in memory so the slice remains instantly runnable. The next
-production milestone is a Kubernetes repository and reconciliation layer for
-`NexusPipelineRun`, followed by OIDC/RBAC and the MLflow/Argo adapters.
+See [Backend architecture](docs/backend.md) for service ports, configuration, integration
+contracts, deployment resources, and explicit production gates.
 
-## Repository shape
+## Important scope boundary
 
-```text
-go/                    Go gateway, API contracts, web workspace, tests
-python/mlaiops_sdk/    Typed Python client
-python/tests/          SDK tests
-examples/              Golden-path examples
-Dockerfile             Distroless production image
-```
+This repository implements the platform-owned integration and control services. It does not
+fork or vendor Kafka, MinIO, KFP/Argo, MLflow, Feast, KServe, Redis, PostgreSQL, or Langfuse.
+Operators install those upstream systems and connect them through standard APIs.
 
-The PRD's exclusion policy is enforced by design: this code has no Iguazio, MLRun, Nuclio, or
-V3IO dependencies.
+The architecture exclusion policy from the PRD is enforced in CI.

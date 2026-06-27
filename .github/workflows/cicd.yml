@@ -20,7 +20,10 @@ jobs:
       - run: gofmt -l . | tee /tmp/unformatted && test ! -s /tmp/unformatted
       - run: go vet ./...
       - run: go test -race ./...
-      - run: go build ./cmd/gateway
+      - run: go build ./cmd/...
+      - name: Enforce architecture exclusions
+        run: |
+          ! grep -RniE '\b(mlrun|nuclio|v3io|iguazio)\b' . ../config
 
   python:
     runs-on: ubuntu-latest
@@ -33,3 +36,4 @@ jobs:
       - run: make install
       - run: ruff check python
       - run: python -m pytest -q
+      - run: python -m compileall -q python/mlaiops_sdk
