@@ -22,7 +22,7 @@ async function loadDashboard() {
   document.querySelector("#stat-projects").textContent = data.projects;
   document.querySelector("#stat-runs").textContent = data.active_runs;
   document.querySelector("#stat-health").textContent = `${data.healthy_components}/${data.total_components}`;
-  document.querySelector("#progress-ring").style.background = `radial-gradient(circle closest-side,#eaf2e2 80%,transparent 81% 99%),conic-gradient(var(--green) ${data.onboarding_percent}%,#cdd9c6 0)`;
+  document.querySelector("#progress-ring").style.background = `conic-gradient(#111 ${data.onboarding_percent}%,#fff 0)`;
   document.querySelector("#progress-ring strong").textContent = `${data.onboarding_percent}%`;
   document.querySelector("#recent-runs").innerHTML = data.recent_runs.length ? data.recent_runs.map(run => `<div class="run-row"><span class="run-icon">↯</span><div><b>${escapeHTML(run.name)}</b><small>${when(run.created_at)}</small></div>${status(run.status)}</div>`).join("") : `<p class="empty">No runs yet.</p>`;
 }

@@ -4,15 +4,20 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Nexus — ML work without the maze</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
+  <div class="menu-bar">
+    <button class="apple-menu" aria-label="Nexus menu">◆</button>
+    <b>Nexus</b>
+    <button>File</button><button>Edit</button><button>View</button><button>Run</button><button>Window</button><button>Help</button>
+    <span class="menu-spacer"></span>
+    <span class="menu-status">▣ Local Cluster&nbsp;&nbsp;◷</span>
+  </div>
   <div class="shell">
     <aside>
-      <a class="brand" href="#"><span class="brand-mark">N</span><span>Nexus</span></a>
+      <div class="window-title"><button aria-label="Close navigation"></button><span>ML Operations</span><i></i></div>
+      <a class="brand" href="#"><span class="brand-mark">N</span><span>Nexus Control Panel</span></a>
       <nav aria-label="Main navigation">
         <button class="nav-item active" data-view="overview"><span>⌂</span> Overview</button>
         <button class="nav-item" data-view="projects"><span>◇</span> Projects</button>
@@ -28,6 +33,7 @@
 
     <main>
       <header>
+        <div class="window-title"><button aria-label="Close window"></button><span>Workspace</span><i></i></div>
         <div><p class="eyebrow">ML WORKSPACE</p><h1 id="page-title">Good morning, builder.</h1></div>
         <button class="primary" id="new-project">＋ New project</button>
       </header>
