@@ -50,5 +50,11 @@ local-up:
 local-down:
 	docker compose -f deploy/compose.yaml down
 
+public-up:
+	bash deploy/public-up.sh
+
+public-down:
+	docker compose -f deploy/compose.yaml -f deploy/compose.public.yaml down
+
 kind-up:
 	bash scripts/kind-up.sh

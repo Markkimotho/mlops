@@ -885,10 +885,20 @@ func writeError(w http.ResponseWriter, status int, code, message string) {
 	writeJSON(w, status, api.APIError{Error: code, Message: message})
 }
 
+// cors reflects the configured origin. MLAIOPS_ALLOWED_ORIGIN pins the
+// console origin in public deployments; unset means local development where
+// any origin is fine.
 func cors(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "*")
+		origin := os.Getenv("MLAIOPS_ALLOWED_ORIGIN")
+		if origin == "" {
+			origin = "*"
+		}
+		w.Header().Set("Access-Control-Allow-Origin", origin)
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+		if origin != "*" {
+			w.Header().Set("Vary", "Origin")
+		}
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusNoContent)
 			return
