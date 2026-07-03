@@ -1,4 +1,4 @@
-.PHONY: install run test test-go test-python test-integration test-load test-e2e lint format build verify local-up local-down kind-up
+.PHONY: install run test test-go test-python test-integration test-load test-e2e lint format build verify local-up local-down kind-up docs-install docs-serve docs-build
 
 install:
 	python -m pip install -r requirements.txt
@@ -58,3 +58,12 @@ public-down:
 
 kind-up:
 	bash scripts/kind-up.sh
+
+docs-install:
+	python -m pip install -r requirements-docs.txt
+
+docs-serve:
+	mkdocs serve
+
+docs-build:
+	mkdocs build --strict

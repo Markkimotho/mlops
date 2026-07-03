@@ -90,6 +90,20 @@ Python SDK / CLI / UI
 See [Backend architecture](docs/backend.md) for service ports, configuration, integration
 contracts, deployment resources, and explicit production gates.
 
+## Documentation
+
+Full documentation lives in [`docs/`](docs/index.md) and builds into a browsable site
+with MkDocs Material — architecture, every service and module, installation,
+configuration reference, the REST API, RBAC, and operations:
+
+```bash
+make docs-install     # pip install mkdocs-material
+make docs-serve       # live preview at http://localhost:8000
+make docs-build       # strict static build into site/
+```
+
+Start at [`docs/index.md`](docs/index.md).
+
 ## Important scope boundary
 
 This repository implements the platform-owned integration and control services. It does not
