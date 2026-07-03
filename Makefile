@@ -1,4 +1,4 @@
-.PHONY: install run test test-go test-python test-integration test-load test-e2e lint format build verify local-up local-down ide-up ide-down kind-up docs-install docs-serve docs-build
+.PHONY: install run test test-go test-python test-integration test-load test-stress test-security test-e2e lint format build verify local-up local-down ide-up ide-down kind-up docs-install docs-serve docs-build
 
 install:
 	python -m pip install -r requirements.txt
@@ -20,6 +20,13 @@ test-integration:
 
 test-load:
 	k6 run tests/load/gateway.js
+
+test-stress:
+	bash scripts/stress-test.sh
+
+test-security:
+	cd go && go run golang.org/x/vuln/cmd/govulncheck@latest ./...
+	python -m pip install -q pip-audit && python -m pip_audit -r requirements.txt
 
 test-e2e:
 	bash scripts/e2e-kind.sh
