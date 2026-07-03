@@ -14,6 +14,8 @@ on:
       - deploy/**
       - scripts/**
       - tests/**
+      - Dockerfile
+      - Makefile
       - .github/workflows/pressure-test.yml
   workflow_dispatch:
   schedule:
