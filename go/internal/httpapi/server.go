@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -35,6 +36,9 @@ func New(data store.Repository, static fs.FS) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/v1/health", server.health)
 	mux.HandleFunc("GET /api/v1/me", server.me)
+	mux.HandleFunc("GET /api/v1/admin/users", server.userAccess)
+	mux.HandleFunc("PUT /api/v1/admin/users/{subject}", server.upsertUserAccess)
+	mux.HandleFunc("DELETE /api/v1/admin/users/{subject}", server.deleteUserAccess)
 	mux.HandleFunc("GET /api/v1/dashboard", server.dashboard)
 	mux.HandleFunc("GET /api/v1/onboarding/readiness", server.readiness)
 	mux.HandleFunc("GET /api/v1/projects", server.projects)
@@ -82,7 +86,14 @@ func New(data store.Repository, static fs.FS) http.Handler {
 	mux.HandleFunc("GET /api/v1/audit", server.audit)
 	mux.HandleFunc("GET /api/openapi.json", server.openapi)
 	mux.Handle("/", http.FileServer(http.FS(static)))
-	return logging(cors(auth.RBAC(mux)))
+	resolver := func(subject string) (roles, services, projectIDs []string, disabled bool, ok bool) {
+		access, err := data.AccessFor(subject)
+		if err != nil {
+			return nil, nil, nil, false, false
+		}
+		return []string{access.Role}, access.Services, access.ProjectIDs, access.Disabled, true
+	}
+	return logging(cors(auth.RBACWithResolver(mux, resolver)))
 }
 
 // me reports the caller's identity and effective permissions so the console
@@ -98,20 +109,61 @@ func (s *Server) me(w http.ResponseWriter, r *http.Request) {
 		mode = "oidc"
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"subject":     principal.Subject,
-		"email":       principal.Email,
-		"roles":       principal.Roles,
-		"mode":        mode,
-		"permissions": auth.Permissions(principal),
+		"subject":      principal.Subject,
+		"email":        principal.Email,
+		"roles":        principal.Roles,
+		"mode":         mode,
+		"permissions":  auth.Permissions(principal),
+		"services":     principal.Services,
+		"project_ids":  principal.ProjectIDs,
+		"provisioned":  principal.Provisioned,
+		"entitlements": accessFor(s.store, principal),
 	})
+}
+
+func (s *Server) userAccess(w http.ResponseWriter, _ *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]any{"items": s.store.UserAccess()})
+}
+
+func (s *Server) upsertUserAccess(w http.ResponseWriter, r *http.Request) {
+	var req api.UpsertUserAccessRequest
+	if err := decode(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_request", err.Error())
+		return
+	}
+	if r.PathValue("subject") == principal(r).Subject && (req.Role != auth.RoleAdmin || req.Disabled) {
+		writeError(w, http.StatusBadRequest, "invalid_request", "administrators cannot demote or suspend themselves")
+		return
+	}
+	access, err := s.store.UpsertUserAccess(r.PathValue("subject"), req, actor(r))
+	if err != nil {
+		writeMutation(w, access, err, http.StatusOK)
+		return
+	}
+	writeJSON(w, http.StatusOK, access)
+}
+
+func (s *Server) deleteUserAccess(w http.ResponseWriter, r *http.Request) {
+	if r.PathValue("subject") == principal(r).Subject {
+		writeError(w, http.StatusBadRequest, "invalid_request", "administrators cannot remove their own access")
+		return
+	}
+	if err := s.store.DeleteUserAccess(r.PathValue("subject"), actor(r)); err != nil {
+		writeMutation(w, struct{}{}, err, http.StatusNoContent)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (s *Server) health(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"status": "ok", "service": "mlaiops-gateway", "version": "0.1.0"})
 }
 
-func (s *Server) dashboard(w http.ResponseWriter, _ *http.Request) {
-	projects, runs, components := s.store.Projects(), s.store.Runs(), platform.Components(s.store.Connections())
+func (s *Server) dashboard(w http.ResponseWriter, r *http.Request) {
+	value := principal(r)
+	projects := filterProjects(s.store.Projects(), value)
+	runs := filterRuns(s.store.Runs(), allowedProjectIDs(s.store, value))
+	components := platform.Components(s.store.Connections())
 	active, healthy := 0, 0
 	for _, run := range runs {
 		if run.Status == "running" || run.Status == "queued" {
@@ -167,16 +219,21 @@ func choose(condition bool, yes, no string) string {
 	return no
 }
 
-func (s *Server) projects(w http.ResponseWriter, _ *http.Request) {
-	writeJSON(w, http.StatusOK, s.store.Projects())
+func (s *Server) projects(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, filterProjects(s.store.Projects(), principal(r)))
 }
 
 func (s *Server) createProject(w http.ResponseWriter, r *http.Request) {
+	if err := enforceProjectQuota(s.store, principal(r)); err != nil {
+		writeError(w, http.StatusForbidden, "quota_exceeded", err.Error())
+		return
+	}
 	var req api.CreateProjectRequest
 	if err := decode(r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid_request", err.Error())
 		return
 	}
+	req.OwnerSubject = principal(r).Subject
 	project, err := s.store.CreateProject(req, actor(r))
 	if err != nil {
 		writeError(w, http.StatusUnprocessableEntity, "validation_error", err.Error())
@@ -185,14 +242,21 @@ func (s *Server) createProject(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, project)
 }
 
-func (s *Server) runs(w http.ResponseWriter, _ *http.Request) {
-	writeJSON(w, http.StatusOK, s.store.Runs())
+func (s *Server) runs(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, filterRuns(s.store.Runs(), allowedProjectIDs(s.store, principal(r))))
 }
 func (s *Server) run(w http.ResponseWriter, r *http.Request) {
 	item, err := s.store.Run(r.PathValue("id"))
+	if err == nil && !projectAllowed(s.store, principal(r), item.ProjectID) {
+		err = store.ErrNotFound
+	}
 	writeMutation(w, item, err, http.StatusOK)
 }
 func (s *Server) cancelRun(w http.ResponseWriter, r *http.Request) {
+	if run, err := s.store.Run(r.PathValue("id")); err != nil || !projectAllowed(s.store, principal(r), run.ProjectID) {
+		writeError(w, http.StatusNotFound, "not_found", "run not found")
+		return
+	}
 	item, err := s.store.CancelRun(r.PathValue("id"), actor(r))
 	if err == nil && item.EngineRunID != "" && os.Getenv("PREFECT_API_URL") != "" {
 		// Best effort: the control-plane cancellation is authoritative; the
@@ -217,6 +281,14 @@ func (s *Server) updateRunStep(w http.ResponseWriter, r *http.Request) {
 	writeMutation(w, item, err, http.StatusOK)
 }
 func (s *Server) retryRun(w http.ResponseWriter, r *http.Request) {
+	if run, err := s.store.Run(r.PathValue("id")); err != nil || !projectAllowed(s.store, principal(r), run.ProjectID) {
+		writeError(w, http.StatusNotFound, "not_found", "run not found")
+		return
+	}
+	if err := enforceRunQuota(s.store, principal(r)); err != nil {
+		writeError(w, http.StatusForbidden, "quota_exceeded", err.Error())
+		return
+	}
 	item, err := s.store.RetryRun(r.PathValue("id"), actor(r))
 	writeMutation(w, item, err, http.StatusAccepted)
 }
@@ -225,6 +297,14 @@ func (s *Server) submitPipeline(w http.ResponseWriter, r *http.Request) {
 	var req api.SubmitPipelineRequest
 	if err := decode(r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid_request", err.Error())
+		return
+	}
+	if !projectAllowed(s.store, principal(r), req.ProjectID) {
+		writeError(w, http.StatusForbidden, "access_denied", "project is not assigned to this user")
+		return
+	}
+	if err := enforceRunQuota(s.store, principal(r)); err != nil {
+		writeError(w, http.StatusForbidden, "quota_exceeded", err.Error())
 		return
 	}
 	run, err := s.store.SubmitPipeline(req, actor(r))
@@ -259,7 +339,7 @@ func (s *Server) components(w http.ResponseWriter, _ *http.Request) {
 }
 
 func (s *Server) catalog(w http.ResponseWriter, r *http.Request) {
-	items, kind := platform.Catalog(s.store), r.URL.Query().Get("kind")
+	items, kind := platform.Catalog(scopedCatalog{s.store, allowedProjectIDs(s.store, principal(r))}), r.URL.Query().Get("kind")
 	if kind == "" {
 		writeJSON(w, http.StatusOK, items)
 		return
@@ -302,6 +382,10 @@ func (s *Server) reportMaterialization(w http.ResponseWriter, r *http.Request) {
 // the sole holder of object-store credentials.
 func (s *Server) storageProxy(path string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		if !storageAllowed(s.store, principal(r), r.URL.Query().Get("bucket")) {
+			writeError(w, http.StatusForbidden, "access_denied", "storage bucket is not assigned to this user")
+			return
+		}
 		base := os.Getenv("STORAGE_PROXY_URL")
 		if base == "" {
 			base = "http://localhost:8084"
@@ -325,6 +409,25 @@ func (s *Server) storageProxy(path string) http.HandlerFunc {
 			return
 		}
 		defer func() { _ = response.Body.Close() }()
+		if path == "/buckets" && slices.Contains(principal(r).Roles, auth.RoleUser) {
+			var payload struct {
+				Buckets []map[string]any `json:"buckets"`
+			}
+			if err := json.NewDecoder(response.Body).Decode(&payload); err != nil {
+				writeError(w, http.StatusBadGateway, "storage_unreachable", err.Error())
+				return
+			}
+			access, _ := s.store.AccessFor(principal(r).Subject)
+			filtered := make([]map[string]any, 0)
+			for _, bucket := range payload.Buckets {
+				name, _ := bucket["name"].(string)
+				if slices.Contains(access.Storage.Buckets, name) {
+					filtered = append(filtered, bucket)
+				}
+			}
+			writeJSON(w, response.StatusCode, map[string]any{"buckets": filtered})
+			return
+		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(response.StatusCode)
 		_, _ = io.Copy(w, response.Body)
@@ -538,8 +641,8 @@ func (s *Server) invokeFunction(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write(result)
 }
 
-func (s *Server) models(w http.ResponseWriter, _ *http.Request) {
-	items := s.store.Models()
+func (s *Server) models(w http.ResponseWriter, r *http.Request) {
+	items := filterModels(s.store.Models(), allowedProjectIDs(s.store, principal(r)))
 	writeJSON(w, http.StatusOK, api.Page[api.Model]{Items: items, Total: len(items)})
 }
 
@@ -549,11 +652,19 @@ func (s *Server) registerModel(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid_request", err.Error())
 		return
 	}
+	if !projectAllowed(s.store, principal(r), req.ProjectID) {
+		writeError(w, http.StatusForbidden, "access_denied", "project is not assigned to this user")
+		return
+	}
 	item, err := s.store.RegisterModel(req, actor(r))
 	writeMutation(w, item, err, http.StatusCreated)
 }
 
 func (s *Server) promoteModel(w http.ResponseWriter, r *http.Request) {
+	if !modelAllowed(s.store, principal(r), r.PathValue("id")) {
+		writeError(w, http.StatusNotFound, "not_found", "model not found")
+		return
+	}
 	var req api.PromoteModelRequest
 	if err := decode(r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid_request", err.Error())
@@ -563,6 +674,10 @@ func (s *Server) promoteModel(w http.ResponseWriter, r *http.Request) {
 	writeMutation(w, item, err, http.StatusOK)
 }
 func (s *Server) deployModel(w http.ResponseWriter, r *http.Request) {
+	if !modelAllowed(s.store, principal(r), r.PathValue("id")) {
+		writeError(w, http.StatusNotFound, "not_found", "model not found")
+		return
+	}
 	var req api.DeployModelRequest
 	if err := decode(r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid_request", err.Error())
@@ -620,6 +735,10 @@ func (s *Server) requestServing(r *http.Request, managerURL string, model api.Mo
 }
 
 func (s *Server) rollbackModel(w http.ResponseWriter, r *http.Request) {
+	if !modelAllowed(s.store, principal(r), r.PathValue("id")) {
+		writeError(w, http.StatusNotFound, "not_found", "model not found")
+		return
+	}
 	item, err := s.store.RollbackModel(r.PathValue("id"), actor(r))
 	if err == nil && os.Getenv("SERVING_MANAGER_URL") != "" {
 		// Best effort: remove the serving container for the rolled-back model.
@@ -643,6 +762,10 @@ func (s *Server) rollbackModel(w http.ResponseWriter, r *http.Request) {
 // predictModel proxies a console test request to the model's live serving
 // endpoint (mlflow serve /invocations contract).
 func (s *Server) predictModel(w http.ResponseWriter, r *http.Request) {
+	if !modelAllowed(s.store, principal(r), r.PathValue("id")) {
+		writeError(w, http.StatusNotFound, "not_found", "model not found")
+		return
+	}
 	var model *api.Model
 	for _, item := range s.store.Models() {
 		if item.ID == r.PathValue("id") {
@@ -682,8 +805,8 @@ func (s *Server) predictModel(w http.ResponseWriter, r *http.Request) {
 	_, _ = io.Copy(w, response.Body)
 }
 
-func (s *Server) agents(w http.ResponseWriter, _ *http.Request) {
-	items := s.store.Agents()
+func (s *Server) agents(w http.ResponseWriter, r *http.Request) {
+	items := filterAgents(s.store.Agents(), allowedProjectIDs(s.store, principal(r)))
 	writeJSON(w, http.StatusOK, api.Page[api.Agent]{Items: items, Total: len(items)})
 }
 
@@ -693,11 +816,19 @@ func (s *Server) deployAgent(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid_request", err.Error())
 		return
 	}
+	if !projectAllowed(s.store, principal(r), req.ProjectID) {
+		writeError(w, http.StatusForbidden, "access_denied", "project is not assigned to this user")
+		return
+	}
 	item, err := s.store.DeployAgent(req, actor(r))
 	writeMutation(w, item, err, http.StatusAccepted)
 }
 
 func (s *Server) agentTraffic(w http.ResponseWriter, r *http.Request) {
+	if !agentAllowed(s.store, principal(r), r.PathValue("id")) {
+		writeError(w, http.StatusNotFound, "not_found", "agent not found")
+		return
+	}
 	var req api.TrafficRequest
 	if err := decode(r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid_request", err.Error())
@@ -711,6 +842,10 @@ func (s *Server) agentTraffic(w http.ResponseWriter, r *http.Request) {
 // executes the LangGraph graph and reports the session back through
 // POST /api/v1/traces. The runtime address comes from AGENT_RUNTIME_URL.
 func (s *Server) invokeAgent(w http.ResponseWriter, r *http.Request) {
+	if !agentAllowed(s.store, principal(r), r.PathValue("id")) {
+		writeError(w, http.StatusNotFound, "not_found", "agent not found")
+		return
+	}
 	agentID := r.PathValue("id")
 	var agent *api.Agent
 	for _, item := range s.store.Agents() {
@@ -759,14 +894,26 @@ func (s *Server) invokeAgent(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) agentSessions(w http.ResponseWriter, r *http.Request) {
+	if !agentAllowed(s.store, principal(r), r.PathValue("id")) {
+		writeError(w, http.StatusNotFound, "not_found", "agent not found")
+		return
+	}
 	items := s.store.AgentSessions(r.PathValue("id"))
 	writeJSON(w, http.StatusOK, api.Page[api.AgentSession]{Items: items, Total: len(items)})
 }
 func (s *Server) agentTraces(w http.ResponseWriter, r *http.Request) {
+	if !agentAllowed(s.store, principal(r), r.PathValue("id")) {
+		writeError(w, http.StatusNotFound, "not_found", "agent not found")
+		return
+	}
 	items := s.store.AgentTraces(r.PathValue("id"))
 	writeJSON(w, http.StatusOK, api.Page[api.AgentTrace]{Items: items, Total: len(items)})
 }
 func (s *Server) agentUsage(w http.ResponseWriter, r *http.Request) {
+	if !agentAllowed(s.store, principal(r), r.PathValue("id")) {
+		writeError(w, http.StatusNotFound, "not_found", "agent not found")
+		return
+	}
 	sessions := s.store.AgentSessions(r.PathValue("id"))
 	usage := api.AgentUsage{Sessions: len(sessions)}
 	for _, session := range sessions {

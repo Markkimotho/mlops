@@ -23,6 +23,7 @@ import (
 // realtime processor) reporting back through the internal token.
 const (
 	RoleAdmin    = "admin"
+	RoleUser     = "user"
 	RoleOperator = "operator"
 	RoleEngineer = "engineer"
 	RoleViewer   = "viewer"
@@ -30,11 +31,15 @@ const (
 )
 
 type Principal struct {
-	Subject    string
-	Email      string
-	Tenant     string
-	Roles      []string
-	Namespaces []string
+	Subject     string
+	Email       string
+	Tenant      string
+	Roles       []string
+	Namespaces  []string
+	Services    []string
+	ProjectIDs  []string
+	Disabled    bool
+	Provisioned bool
 }
 
 type contextKey struct{}
@@ -118,6 +123,14 @@ func servicePrincipal(bearer string) (Principal, bool) {
 // principal (role from MLAIOPS_LOCAL_ROLE, admin by default) applies. The
 // resolved principal is placed on the context so handlers attribute actions.
 func RBAC(next http.Handler) http.Handler {
+	return RBACWithResolver(next, nil)
+}
+
+// AccessResolver returns the administrator-managed access profile for a
+// subject. A missing profile is deny-by-default for normal users.
+type AccessResolver func(string) (roles, services, projectIDs []string, disabled bool, ok bool)
+
+func RBACWithResolver(next http.Handler, resolve AccessResolver) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		path := r.URL.Path
 		if !strings.HasPrefix(path, "/api/") || path == "/api/v1/health" || path == "/api/openapi.json" {
@@ -138,8 +151,15 @@ func RBAC(next http.Handler) http.Handler {
 			}
 			r = r.WithContext(WithPrincipal(r.Context(), principal))
 		}
+		if resolve != nil && principal.Subject != "" && !hasRole(principal, RoleService) {
+			if roles, services, projectIDs, disabled, found := resolve(principal.Subject); found {
+				principal.Roles, principal.Services, principal.ProjectIDs = roles, services, projectIDs
+				principal.Disabled, principal.Provisioned = disabled, true
+				r = r.WithContext(WithPrincipal(r.Context(), principal))
+			}
+		}
 		if !Allowed(principal, r.Method, path) {
-			deny(w, http.StatusForbidden, "insufficient role")
+			deny(w, http.StatusForbidden, "access is not provisioned for this service")
 			return
 		}
 		next.ServeHTTP(w, r)
@@ -260,12 +280,33 @@ var serviceWrite = []string{
 	"/api/v1/traces", "/api/v1/pipelines/runs", "/api/v1/features", "/api/v1/realtime",
 }
 
+var userWrite = []string{
+	"/api/v1/projects", "/api/v1/pipelines", "/api/v1/models", "/api/v1/agents",
+	"/api/v1/tools", "/api/v1/features", "/api/v1/traces", "/api/v1/functions",
+	"/api/v1/realtime",
+}
+
 func Allowed(principal Principal, method, path string) bool {
+	if principal.Disabled {
+		return false
+	}
+	if strings.HasPrefix(path, "/api/v1/admin/") {
+		return hasRole(principal, RoleAdmin) || hasRole(principal, RoleOperator)
+	}
 	read := method == http.MethodGet || method == http.MethodHead || method == http.MethodOptions
 	for _, role := range principal.Roles {
 		switch role {
 		case RoleAdmin, RoleOperator:
 			return true
+		case RoleUser:
+			if path == "/api/v1/me" {
+				return true
+			}
+			if !read && machineReportingPath(path) {
+				return false
+			}
+			return principal.Provisioned && hasService(principal.Services, serviceForPath(path)) &&
+				(read || hasAnyPrefix(path, userWrite))
 		case RoleViewer:
 			if read {
 				return true
@@ -281,6 +322,62 @@ func Allowed(principal Principal, method, path string) bool {
 		}
 	}
 	return false
+}
+
+func machineReportingPath(path string) bool {
+	return path == "/api/v1/traces" ||
+		(strings.HasPrefix(path, "/api/v1/pipelines/runs/") && strings.HasSuffix(path, "/steps")) ||
+		(strings.HasPrefix(path, "/api/v1/features/") && strings.HasSuffix(path, "/materialized")) ||
+		strings.HasPrefix(path, "/api/v1/realtime/")
+}
+
+func hasRole(principal Principal, expected string) bool {
+	for _, role := range principal.Roles {
+		if role == expected {
+			return true
+		}
+	}
+	return false
+}
+
+func hasService(services []string, expected string) bool {
+	if expected == "" {
+		return false
+	}
+	for _, service := range services {
+		if service == expected {
+			return true
+		}
+	}
+	return false
+}
+
+func serviceForPath(path string) string {
+	switch {
+	case path == "/api/v1/dashboard", path == "/api/v1/onboarding/readiness", path == "/api/v1/events":
+		return "overview"
+	case strings.HasPrefix(path, "/api/v1/projects"):
+		return "projects"
+	case strings.HasPrefix(path, "/api/v1/pipelines"):
+		return "pipelines"
+	case strings.HasPrefix(path, "/api/v1/models"):
+		return "models"
+	case strings.HasPrefix(path, "/api/v1/agents"), strings.HasPrefix(path, "/api/v1/traces"):
+		return "agents"
+	case strings.HasPrefix(path, "/api/v1/features"):
+		return "features"
+	case strings.HasPrefix(path, "/api/v1/storage"):
+		return "storage"
+	case strings.HasPrefix(path, "/api/v1/realtime"):
+		return "realtime"
+	case strings.HasPrefix(path, "/api/v1/catalog"), strings.HasPrefix(path, "/api/v1/tools"), strings.HasPrefix(path, "/api/v1/prompts"):
+		return "catalog"
+	case strings.HasPrefix(path, "/api/v1/components"), strings.HasPrefix(path, "/api/v1/connections"):
+		return "platform"
+	case strings.HasPrefix(path, "/api/v1/functions"):
+		return "models"
+	}
+	return ""
 }
 
 func hasAnyPrefix(path string, prefixes []string) bool {
@@ -305,6 +402,7 @@ func Permissions(principal Principal) map[string]bool {
 		"features_write":    Allowed(principal, http.MethodPost, "/api/v1/features"),
 		"functions_write":   Allowed(principal, http.MethodPost, "/api/v1/functions"),
 		"connections_write": Allowed(principal, http.MethodPost, "/api/v1/connections"),
+		"access_manage":     Allowed(principal, http.MethodPut, "/api/v1/admin/users/example"),
 	}
 }
 

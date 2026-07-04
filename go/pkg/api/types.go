@@ -3,20 +3,60 @@ package api
 
 import "time"
 
+// UserAccess is the administrator-owned authorization and capacity profile for
+// one human identity. Subject must match the OIDC `sub` claim exactly.
+type UserAccess struct {
+	Subject    string       `json:"subject"`
+	Email      string       `json:"email"`
+	Role       string       `json:"role"`
+	Services   []string     `json:"services"`
+	ProjectIDs []string     `json:"project_ids,omitempty"`
+	Storage    StorageGrant `json:"storage"`
+	Compute    ComputeGrant `json:"compute"`
+	Disabled   bool         `json:"disabled"`
+	CreatedAt  time.Time    `json:"created_at"`
+	UpdatedAt  time.Time    `json:"updated_at"`
+}
+
+type StorageGrant struct {
+	SizeGB  int      `json:"size_gb"`
+	Buckets []string `json:"buckets,omitempty"`
+}
+
+type ComputeGrant struct {
+	VCPUs       int `json:"vcpus"`
+	MemoryGB    int `json:"memory_gb"`
+	MaxVMs      int `json:"max_vms"`
+	MaxProjects int `json:"max_projects"`
+	MaxRuns     int `json:"max_concurrent_runs"`
+}
+
+type UpsertUserAccessRequest struct {
+	Email      string       `json:"email"`
+	Role       string       `json:"role"`
+	Services   []string     `json:"services"`
+	ProjectIDs []string     `json:"project_ids,omitempty"`
+	Storage    StorageGrant `json:"storage"`
+	Compute    ComputeGrant `json:"compute"`
+	Disabled   bool         `json:"disabled"`
+}
+
 type Project struct {
-	ID          string    `json:"id"`
-	Name        string    `json:"name"`
-	Description string    `json:"description"`
-	Template    string    `json:"template"`
-	Namespace   string    `json:"namespace"`
-	Status      string    `json:"status"`
-	CreatedAt   time.Time `json:"created_at"`
+	ID           string    `json:"id"`
+	Name         string    `json:"name"`
+	Description  string    `json:"description"`
+	Template     string    `json:"template"`
+	Namespace    string    `json:"namespace"`
+	Status       string    `json:"status"`
+	CreatedAt    time.Time `json:"created_at"`
+	OwnerSubject string    `json:"owner_subject,omitempty"`
 }
 
 type CreateProjectRequest struct {
-	Name        string `json:"name"`
-	Description string `json:"description"`
-	Template    string `json:"template"`
+	Name         string `json:"name"`
+	Description  string `json:"description"`
+	Template     string `json:"template"`
+	OwnerSubject string `json:"-"`
 }
 
 type PipelineRun struct {

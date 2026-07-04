@@ -9,6 +9,8 @@ func (s *Server) openapi(w http.ResponseWriter, _ *http.Request) {
 		"paths": map[string]any{
 			"/api/v1/health":                       map[string]any{"get": map[string]any{"summary": "Gateway health"}},
 			"/api/v1/me":                           map[string]any{"get": map[string]any{"summary": "Caller identity, roles and effective permissions"}},
+			"/api/v1/admin/users":                  map[string]any{"get": map[string]any{"summary": "List user access profiles (admin only)"}},
+			"/api/v1/admin/users/{subject}":        map[string]any{"put": map[string]any{"summary": "Provision user access and quotas (admin only)"}, "delete": map[string]any{"summary": "Revoke user access (admin only)"}},
 			"/api/v1/dashboard":                    map[string]any{"get": map[string]any{"summary": "Workspace summary"}},
 			"/api/v1/onboarding/readiness":         map[string]any{"get": map[string]any{"summary": "Onboarding readiness"}},
 			"/api/v1/projects":                     map[string]any{"get": map[string]any{"summary": "List projects"}, "post": map[string]any{"summary": "Create project"}},

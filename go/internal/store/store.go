@@ -17,6 +17,7 @@ var ErrNotFound = errors.New("resource not found")
 var ErrConflict = errors.New("resource already exists")
 
 type state struct {
+	UserAccess  []api.UserAccess   `json:"user_access"`
 	Projects    []api.Project      `json:"projects"`
 	Runs        []api.PipelineRun  `json:"runs"`
 	Models      []api.Model        `json:"models"`
@@ -27,6 +28,59 @@ type state struct {
 	Sessions    []api.AgentSession `json:"sessions"`
 	Traces      []api.AgentTrace   `json:"traces"`
 	Features    []api.FeatureView  `json:"features"`
+}
+
+func (s *Store) UserAccess() []api.UserAccess {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return clone(s.data.UserAccess)
+}
+
+func (s *Store) AccessFor(subject string) (api.UserAccess, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	for _, access := range s.data.UserAccess {
+		if access.Subject == subject {
+			return access, nil
+		}
+	}
+	return api.UserAccess{}, ErrNotFound
+}
+
+func (s *Store) UpsertUserAccess(subject string, req api.UpsertUserAccessRequest, actor string) (api.UserAccess, error) {
+	access, err := validateAccess(subject, req)
+	if err != nil {
+		return api.UserAccess{}, err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	now := time.Now().UTC()
+	access.UpdatedAt = now
+	for i := range s.data.UserAccess {
+		if s.data.UserAccess[i].Subject == subject {
+			access.CreatedAt = s.data.UserAccess[i].CreatedAt
+			s.data.UserAccess[i] = access
+			s.record("access.updated", "user_access", subject, actor, nil)
+			return access, s.persist()
+		}
+	}
+	access.CreatedAt = now
+	s.data.UserAccess = append([]api.UserAccess{access}, s.data.UserAccess...)
+	s.record("access.created", "user_access", subject, actor, nil)
+	return access, s.persist()
+}
+
+func (s *Store) DeleteUserAccess(subject, actor string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i := range s.data.UserAccess {
+		if s.data.UserAccess[i].Subject == subject {
+			s.data.UserAccess = append(s.data.UserAccess[:i], s.data.UserAccess[i+1:]...)
+			s.record("access.deleted", "user_access", subject, actor, nil)
+			return s.persist()
+		}
+	}
+	return ErrNotFound
 }
 
 type Store struct {
@@ -91,7 +145,7 @@ func (s *Store) CreateProject(req api.CreateProjectRequest, actor ...string) (ap
 			return api.Project{}, ErrConflict
 		}
 	}
-	p := api.Project{ID: id("prj"), Name: name, Description: strings.TrimSpace(req.Description), Template: req.Template, Namespace: slug(name), Status: "ready", CreatedAt: time.Now().UTC()}
+	p := api.Project{ID: id("prj"), Name: name, Description: strings.TrimSpace(req.Description), Template: req.Template, Namespace: slug(name), Status: "ready", CreatedAt: time.Now().UTC(), OwnerSubject: req.OwnerSubject}
 	s.data.Projects = append([]api.Project{p}, s.data.Projects...)
 	s.record("project.created", "project", p.ID, first(actor), nil)
 	return p, s.persist()

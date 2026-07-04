@@ -3,6 +3,10 @@ package store
 import "github.com/ml-ai-ops/platform/pkg/api"
 
 type Repository interface {
+	UserAccess() []api.UserAccess
+	AccessFor(string) (api.UserAccess, error)
+	UpsertUserAccess(string, api.UpsertUserAccessRequest, string) (api.UserAccess, error)
+	DeleteUserAccess(string, string) error
 	Projects() []api.Project
 	Runs() []api.PipelineRun
 	Models() []api.Model

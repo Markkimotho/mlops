@@ -28,8 +28,10 @@ function showMetadata(kind, title, item, actions = "") {
 // ---- identity & permissions -------------------------------------------------
 // The gateway's /api/v1/me is the single source of truth: buttons the caller's
 // role cannot use are disabled here, and the API enforces the same table.
-let me = {subject: "", email: "", roles: [], mode: "local", permissions: {}};
+let me = {subject: "", email: "", roles: [], services: [], mode: "local", permissions: {}};
 const can = key => me.permissions[key] !== false;
+const isAdmin = () => me.roles.includes("admin") || me.roles.includes("operator");
+const hasService = service => isAdmin() || !me.roles.includes("user") || me.services.includes(service);
 
 function applyPermissions() {
   document.querySelectorAll("[data-perm]").forEach(button => {
@@ -41,6 +43,12 @@ function applyPermissions() {
   document.querySelector("#user-name").textContent = name;
   document.querySelector("#user-role").textContent = `${me.roles.join(", ") || "no role"} · ${me.mode} mode`;
   document.querySelector("#menu-user").textContent = `${name} · ${me.roles.join(", ")}`;
+  document.querySelectorAll("[data-admin-only]").forEach(node => { node.hidden = !isAdmin(); });
+  document.querySelectorAll(".nav-item[data-view]").forEach(node => {
+    if (node.dataset.view !== "access") node.hidden = !hasService(node.dataset.view);
+  });
+  document.querySelector("#workbench-link").hidden = !hasService("workbench");
+  document.querySelector("#ide-link").hidden = !hasService("ide");
 }
 
 async function loadMe() {
@@ -53,10 +61,12 @@ let activeView = "overview";
 const viewLoaders = {};
 
 function showView(id) {
+  if (id !== "access" && !hasService(id)) { toast("This service has not been assigned to you."); return; }
+  if (id === "access" && !isAdmin()) { toast("Administrator access is required."); return; }
   activeView = id;
   document.querySelectorAll(".view").forEach(node => node.classList.toggle("active", node.id === id));
   document.querySelectorAll(".nav-item").forEach(node => node.classList.toggle("active", node.dataset.view === id));
-  const labels = {overview:"Good morning, builder.", projects:"Build with a clear starting point.", pipelines:"Every run, made legible.", models:"Promote with confidence.", agents:"Understand every agent turn.", features:"One source of truth for features.", storage:"Artifacts and live endpoints.", realtime:"Score events as they happen.", catalog:"Reuse what your team knows.", platform:"Connect the production pieces."};
+  const labels = {overview:"Good morning, builder.", projects:"Build with a clear starting point.", pipelines:"Every run, made legible.", models:"Promote with confidence.", agents:"Understand every agent turn.", features:"One source of truth for features.", storage:"Artifacts and live endpoints.", realtime:"Score events as they happen.", catalog:"Reuse what your team knows.", platform:"Connect the production pieces.", access:"Provision only what people need."};
   document.querySelector("#page-title").textContent = labels[id] || "Workspace";
   if (viewLoaders[id]) viewLoaders[id]().catch(error => toast(error.message));
 }
@@ -266,11 +276,39 @@ async function loadComponents() {
   document.querySelector("#connection-grid").innerHTML = connections.items.length ? connections.items.map(item => `<article class="card connection-card"><span class="kind">${escapeHTML(item.type)}</span><h3>${escapeHTML(item.name)}</h3><p>${escapeHTML(item.endpoint)}</p><footer>${status(item.status)}${can("connections_write") ? `<button data-connection-test="${escapeHTML(item.id)}">Test</button>` : ""}</footer>${item.message ? `<small>${escapeHTML(item.message)}</small>` : ""}</article>`).join("") : `<div class="empty-state"><b>No services connected</b><span>Add Kubernetes, MLflow, storage and Kafka to complete onboarding.</span></div>`;
 }
 
+const accessServices = ["overview","projects","pipelines","models","agents","features","storage","realtime","catalog","platform","workbench","ide"];
+let accessCache = [];
+const csv = value => String(value || "").split(",").map(item => item.trim()).filter(Boolean);
+function accessPayload(form) {
+  const value = Object.fromEntries(new FormData(form));
+  return {
+    email:value.email, role:value.role,
+    services:[...form.querySelectorAll("[name='services']:checked")].map(input => input.value),
+    project_ids:csv(value.project_ids),
+    storage:{size_gb:Number(value.storage_gb), buckets:csv(value.buckets)},
+    compute:{vcpus:Number(value.vcpus), memory_gb:Number(value.memory_gb), max_vms:Number(value.max_vms), max_projects:Number(value.max_projects), max_concurrent_runs:Number(value.max_runs)},
+    disabled:form.elements.disabled.checked,
+  };
+}
+async function loadAccess() {
+  const data = await api("/api/v1/admin/users");
+  accessCache = data.items || [];
+  document.querySelector("#access-table").innerHTML = accessCache.length ? accessCache.map(item => `<tr>
+    <td><b>${escapeHTML(item.email || item.subject)}</b><br><small>${escapeHTML(item.subject)}</small></td>
+    <td><span class="tag">${escapeHTML(item.role)}</span></td><td>${item.services.map(service => `<span class="tag">${escapeHTML(service)}</span>`).join(" ") || "None"}</td>
+    <td>${item.compute.vcpus} vCPU · ${item.compute.memory_gb} GB<br><small>${item.compute.max_vms} VM · ${item.compute.max_projects} projects · ${item.compute.max_concurrent_runs} runs</small></td>
+    <td>${item.storage.size_gb} GB<br><small>${(item.storage.buckets || []).map(escapeHTML).join(", ") || "No buckets"}</small></td>
+    <td>${status(item.disabled ? "suspended" : "active")}</td>
+    <td><button data-access-edit="${escapeHTML(item.subject)}">Edit</button><button class="danger" data-access-delete="${escapeHTML(item.subject)}">Revoke</button></td>
+  </tr>`).join("") : `<tr><td colspan="7" class="empty">No users have been provisioned.</td></tr>`;
+}
+
 Object.assign(viewLoaders, {
   overview: loadDashboard, projects: loadProjects, pipelines: loadRuns, models: loadModels,
   agents: loadAgents, features: loadFeatures, storage: loadStorage, realtime: loadRealtime,
   catalog: () => loadCatalog(document.querySelector("[data-kind].active")?.dataset.kind || ""),
   platform: loadComponents,
+  access: loadAccess,
 });
 
 // ---- live updates over SSE --------------------------------------------------
@@ -329,12 +367,13 @@ async function showAbout() {
 
 document.querySelector("#workbench-link").href = `http://${location.hostname}:8888`;
 document.querySelector("#ide-link").href = `http://${location.hostname}:13337`;
+document.querySelector("#service-grants").innerHTML = accessServices.map(service => `<label class="inline-check"><input type="checkbox" name="services" value="${service}"> ${service}</label>`).join("");
 sidebarToggle.addEventListener("click", toggleSidebar);
 document.querySelector("#refresh-view").addEventListener("click", () => (viewLoaders[activeView] || loadDashboard)().then(() => toast("View refreshed.")).catch(error => toast(error.message)));
 document.querySelector("#open-help").addEventListener("click", () => showAbout().catch(error => toast(error.message)));
 document.querySelectorAll(".brand, .app-brand").forEach(link => link.addEventListener("click", event => {
   event.preventDefault();
-  showView("overview");
+  showView(hasService("overview") ? "overview" : (me.services[0] || "access"));
 }));
 
 // ---- interactions -----------------------------------------------------------
@@ -396,6 +435,22 @@ document.querySelector("#submit-form").addEventListener("submit", async event =>
 });
 
 document.querySelector("#add-connection").addEventListener("click", () => document.querySelector("#connection-dialog").showModal());
+document.querySelector("#add-user-access").addEventListener("click", () => {
+  const form = document.querySelector("#access-form");
+  form.reset(); form.elements.original_subject.value = ""; form.elements.subject.disabled = false;
+  document.querySelector("#access-error").textContent = "";
+  document.querySelector("#access-dialog").showModal();
+});
+document.querySelector("#access-form").addEventListener("submit", async event => {
+  event.preventDefault();
+  const form = event.target, error = document.querySelector("#access-error");
+  const subject = form.elements.original_subject.value || form.elements.subject.value.trim();
+  error.textContent = "";
+  try {
+    await api(`/api/v1/admin/users/${encodeURIComponent(subject)}`, {method:"PUT", body:JSON.stringify(accessPayload(form))});
+    form.reset(); document.querySelector("#access-dialog").close(); toast("User access saved."); await loadAccess();
+  } catch (failure) { error.textContent = failure.message; }
+});
 document.querySelector("#connection-form").addEventListener("submit", async event => {
   event.preventDefault(); const error = document.querySelector("#connection-error"); error.textContent = "";
   try {
@@ -478,6 +533,36 @@ document.querySelector("#function-form").addEventListener("submit", async event 
 });
 
 async function handleDynamicClick(event) {
+  const accessEdit = event.target.closest("[data-access-edit]");
+  if (accessEdit) {
+    const item = accessCache.find(value => value.subject === accessEdit.dataset.accessEdit);
+    if (!item) return;
+    const form = document.querySelector("#access-form");
+    form.reset();
+    form.elements.original_subject.value = item.subject;
+    form.elements.subject.value = item.subject;
+    form.elements.subject.disabled = true;
+    form.elements.email.value = item.email || "";
+    form.elements.role.value = item.role;
+    form.elements.project_ids.value = (item.project_ids || []).join(", ");
+    form.elements.vcpus.value = item.compute.vcpus;
+    form.elements.memory_gb.value = item.compute.memory_gb;
+    form.elements.max_vms.value = item.compute.max_vms;
+    form.elements.max_projects.value = item.compute.max_projects;
+    form.elements.max_runs.value = item.compute.max_concurrent_runs;
+    form.elements.storage_gb.value = item.storage.size_gb;
+    form.elements.buckets.value = (item.storage.buckets || []).join(", ");
+    form.elements.disabled.checked = item.disabled;
+    form.querySelectorAll("[name='services']").forEach(input => { input.checked = item.services.includes(input.value); });
+    document.querySelector("#access-dialog").showModal();
+    return;
+  }
+  const accessDelete = event.target.closest("[data-access-delete]");
+  if (accessDelete) {
+    if (!confirm(`Revoke all access for ${accessDelete.dataset.accessDelete}?`)) return;
+    await api(`/api/v1/admin/users/${encodeURIComponent(accessDelete.dataset.accessDelete)}`, {method:"DELETE"});
+    toast("User access revoked."); await loadAccess(); return;
+  }
   const bucket = event.target.closest("[data-bucket]");
   if (bucket) { storageState.bucket = bucket.dataset.bucket; storageState.prefix = ""; await loadStorage(); return; }
   const prefix = event.target.closest("[data-prefix]");
@@ -604,5 +689,10 @@ document.addEventListener("click", event => {
   handleDynamicClick(event).catch(failure => toast(failure.message));
 });
 
-Promise.all([loadMe(), loadDashboard(), loadProjects(), loadRuns()]).catch(error => toast(error.message));
-connectEvents();
+loadMe().then(async () => {
+  const initial = ["overview","projects","pipelines"].filter(hasService);
+  await Promise.all(initial.map(service => viewLoaders[service]()));
+  const first = initial[0] || (isAdmin() ? "access" : me.services[0]);
+  if (first) showView(first);
+  if (hasService("overview")) connectEvents();
+}).catch(error => toast(error.message));

@@ -77,6 +77,41 @@ func (p *Postgres) Models() []api.Model           { return list[api.Model](p, "m
 func (p *Postgres) Agents() []api.Agent           { return list[api.Agent](p, "agent") }
 func (p *Postgres) Tools() []api.Tool             { return list[api.Tool](p, "tool") }
 func (p *Postgres) Connections() []api.Connection { return list[api.Connection](p, "connection") }
+func (p *Postgres) UserAccess() []api.UserAccess  { return list[api.UserAccess](p, "user_access") }
+
+func (p *Postgres) AccessFor(subject string) (api.UserAccess, error) {
+	return get[api.UserAccess](p, "user_access", subject)
+}
+
+func (p *Postgres) UpsertUserAccess(subject string, req api.UpsertUserAccessRequest, actor string) (api.UserAccess, error) {
+	access, err := validateAccess(subject, req)
+	if err != nil {
+		return api.UserAccess{}, err
+	}
+	now := time.Now().UTC()
+	access.UpdatedAt = now
+	if existing, getErr := p.AccessFor(subject); getErr == nil {
+		access.CreatedAt = existing.CreatedAt
+	} else {
+		access.CreatedAt = now
+	}
+	return access, p.write("user_access", subject, access, "access.upserted", actor, nil)
+}
+
+func (p *Postgres) DeleteUserAccess(subject, actor string) error {
+	ctx := context.Background()
+	tag, err := p.pool.Exec(ctx, `DELETE FROM platform_resources WHERE tenant_id=$1 AND kind='user_access' AND id=$2`, p.tenant, subject)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	event := api.AuditEvent{ID: id("evt"), Action: "access.deleted", Resource: "user_access", ResourceID: subject, Actor: actorOrAnonymous(actor), CreatedAt: time.Now().UTC()}
+	_, err = p.pool.Exec(ctx, `INSERT INTO audit_events (tenant_id,id,action,resource,resource_id,actor,metadata,created_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+		p.tenant, event.ID, event.Action, event.Resource, event.ResourceID, event.Actor, event.Metadata, event.CreatedAt)
+	return err
+}
 
 func (p *Postgres) Audit() []api.AuditEvent {
 	rows, err := p.pool.Query(context.Background(), `SELECT id, action, resource, resource_id, actor, metadata, created_at FROM audit_events WHERE tenant_id=$1 ORDER BY sequence DESC LIMIT 500`, p.tenant)
@@ -106,7 +141,7 @@ func (p *Postgres) CreateProject(req api.CreateProjectRequest, actors ...string)
 			return api.Project{}, ErrConflict
 		}
 	}
-	project := api.Project{ID: id("prj"), Name: strings.TrimSpace(req.Name), Description: strings.TrimSpace(req.Description), Template: req.Template, Namespace: slug(req.Name), Status: "ready", CreatedAt: time.Now().UTC()}
+	project := api.Project{ID: id("prj"), Name: strings.TrimSpace(req.Name), Description: strings.TrimSpace(req.Description), Template: req.Template, Namespace: slug(req.Name), Status: "ready", CreatedAt: time.Now().UTC(), OwnerSubject: req.OwnerSubject}
 	return project, p.write("project", project.ID, project, "project.created", first(actors), nil)
 }
 

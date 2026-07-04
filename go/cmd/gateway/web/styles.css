@@ -401,6 +401,14 @@ textarea { min-height: 72px; resize: vertical; }
 .feature-card .schema th { text-align: left; color: var(--tertiary); font-weight: 600; padding: 3px 8px 3px 0; border-bottom: 1px solid var(--line); }
 .feature-card .schema td { padding: 4px 8px 4px 0; border-bottom: 1px solid rgba(60,60,67,.07); font-family: ui-monospace, monospace; }
 
+.checkbox-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(135px, 1fr)); gap: 8px; margin-top: 8px; }
+.quota-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(145px, 1fr)); gap: 12px; }
+.inline-check { display: flex; flex-direction: row; align-items: center; gap: 8px; }
+.inline-check input { width: auto; margin: 0; }
+fieldset { border: 1px solid var(--line); border-radius: 12px; padding: 12px; }
+legend { color: var(--secondary); font-size: 12px; font-weight: 700; padding: 0 6px; text-transform: uppercase; }
+button.danger { color: #c9342f; }
+
 /* Storage explorer */
 .storage-browser { display: flex; flex-direction: column; gap: 4px; max-height: 420px; overflow-y: auto; }
 .storage-row { display: flex; align-items: center; gap: 9px; width: 100%; text-align: left; padding: 8px 11px; border: 1px solid transparent; border-radius: 9px; background: transparent; font-size: 13px; cursor: pointer; }
