@@ -302,6 +302,7 @@ dialog {
 }
 #access-dialog { width:min(780px,94vw); }
 #access-request-dialog { width:min(620px,94vw); }
+#blog-editor-dialog { width:min(980px,96vw); }
 .provisioning-form { display:grid; grid-template-rows:auto minmax(0,1fr) auto; max-height:min(880px,calc(100dvh - 32px)); padding:0; overflow:hidden; }
 .modal-header { padding:24px 28px 18px; border-bottom:1px solid var(--line); background:rgba(255,255,255,.96); }
 .modal-header > p:not(.eyebrow) { margin:7px 0 0; color:var(--secondary); }
@@ -319,6 +320,9 @@ dialog {
 .form-section label { margin:8px 0; }
 .form-section-warning { border-color:rgba(215,0,21,.15); background:rgba(215,0,21,.025); }
 .compact-modal .modal-scroll { padding-bottom:18px; }
+.blog-editor-form { max-height:calc(100dvh - 24px); }
+.blog-editor-grid { display:grid; gap:14px; }
+.blog-content-editor { min-height:430px; font:12px/1.55 "SFMono-Regular",Consolas,monospace; tab-size:2; }
 .access-admin-stack { display:grid; gap:14px; }
 .settings-layout { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; }
 .settings-card { min-width:0; }

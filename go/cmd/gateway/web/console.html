@@ -33,6 +33,7 @@
         <button class="nav-item" data-view="platform"><span>◎</span> Platform</button>
         <button class="nav-item" data-view="profile"><span>♙</span> My access</button>
         <button class="nav-item" data-view="settings"><span>⚙</span> Settings</button>
+        <button class="nav-item" data-view="blogs" data-admin-only hidden><span>✎</span> Engineering blog</button>
         <button class="nav-item" data-view="access" data-admin-only hidden><span>◈</span> Users &amp; access</button>
       </nav>
       <div class="sidebar-footer">
@@ -149,6 +150,11 @@ python -m realtime.produce --demo recommendations --count 2</pre></article>
         </div>
       </section>
 
+      <section id="blogs" class="view">
+        <div class="section-heading"><div><p class="eyebrow">PUBLICATION</p><h2>Engineering blog</h2><p>Write, review, and publish durable engineering guides backed by the platform repository.</p></div><button class="primary" id="new-blog-post">＋ New post</button></div>
+        <article class="panel table-wrap"><table><thead><tr><th>Post</th><th>Author</th><th>Tags</th><th>Status</th><th>Updated</th><th></th></tr></thead><tbody id="blog-admin-table"></tbody></table></article>
+      </section>
+
       <section id="access" class="view">
         <div class="section-heading"><div><p class="eyebrow">IDENTITY &amp; CAPACITY</p><h2>Users &amp; access</h2><p>Assign services, projects, storage, and workspace compute. Unassigned access is denied.</p></div><button class="primary" id="add-user-access" data-perm="access_manage">＋ Provision user</button></div>
         <div class="access-admin-stack">
@@ -228,6 +234,14 @@ python -m realtime.produce --demo recommendations --count 2</pre></article>
 
   <dialog id="api-token-secret-dialog"><div class="detail-sheet token-secret-sheet"><p class="eyebrow">KEY CREATED</p><h2>Copy your key now</h2><p>This secret will not be shown again.</p><div class="token-secret"><code id="api-token-secret"></code><button id="copy-api-token">Copy</button></div><pre class="hint">export MLAIOPS_TOKEN="your-key"
 mlaiops projects list</pre><div class="form-actions"><button class="primary" type="button" data-dialog-close>I have saved it</button></div></div></dialog>
+
+  <dialog id="blog-editor-dialog">
+    <form id="blog-editor-form" class="provisioning-form blog-editor-form">
+      <header class="modal-header"><p class="eyebrow">ENGINEERING BLOG</p><h2 id="blog-editor-title">New post</h2><p>Markdown is stored in the control-plane repository and rendered safely on the public site.</p></header>
+      <div class="modal-scroll"><input type="hidden" name="id"><div class="blog-editor-grid"><section class="form-section"><div class="form-grid"><label>Title<input name="title" required minlength="5" placeholder="A useful engineering title"></label><label>Slug<input name="slug" placeholder="generated-from-title"></label><label>Status<select name="status"><option value="draft">Draft</option><option value="published">Published</option></select></label></div><div class="form-grid"><label>Author<input name="author" value="Nexus Engineering"></label><label>Tags<input name="tags" placeholder="Jupyter, S3, Infrastructure"></label></div><label>Summary<textarea name="summary" required minlength="20" rows="3" placeholder="What will a reader learn?"></textarea></label></section><section class="form-section"><label>Article Markdown<textarea class="blog-content-editor" name="content" required minlength="100" rows="24" placeholder="# Article title&#10;&#10;Write a detailed, practical engineering guide…"></textarea></label></section></div></div>
+      <footer class="modal-footer"><p class="form-error" id="blog-editor-error"></p><div class="form-actions"><button class="secondary" type="button" data-dialog-close>Cancel</button><button class="primary" type="submit">Save post</button></div></footer>
+    </form>
+  </dialog>
 
   <dialog id="chat-dialog">
     <div class="detail-sheet chat-sheet">

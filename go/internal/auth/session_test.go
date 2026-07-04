@@ -69,3 +69,20 @@ func TestVerifierRedirectsBrowserButNotAPI(t *testing.T) {
 		t.Fatalf("landing must remain public, got %d", landing.Code)
 	}
 }
+
+func TestPublishedBlogReadsArePublicButAdminWritesRequireAuthentication(t *testing.T) {
+	verifier := New(Config{})
+	handler := verifier.Middleware(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	public := httptest.NewRecorder()
+	handler.ServeHTTP(public, httptest.NewRequest(http.MethodGet, "/api/v1/blogs/example", nil))
+	if public.Code != http.StatusOK {
+		t.Fatalf("public blog read returned %d", public.Code)
+	}
+	admin := httptest.NewRecorder()
+	handler.ServeHTTP(admin, httptest.NewRequest(http.MethodPost, "/api/v1/admin/blogs", strings.NewReader(`{}`)))
+	if admin.Code != http.StatusUnauthorized {
+		t.Fatalf("anonymous admin blog write returned %d", admin.Code)
+	}
+}

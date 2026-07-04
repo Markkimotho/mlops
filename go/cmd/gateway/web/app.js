@@ -64,11 +64,11 @@ const viewLoaders = {};
 
 function showView(id) {
   if (!["access", "profile", "settings"].includes(id) && !hasService(id)) { toast("This service has not been assigned to you."); return; }
-  if (id === "access" && !isAdmin()) { toast("Administrator access is required."); return; }
+  if (["access","blogs"].includes(id) && !isAdmin()) { toast("Administrator access is required."); return; }
   activeView = id;
   document.querySelectorAll(".view").forEach(node => node.classList.toggle("active", node.id === id));
   document.querySelectorAll(".nav-item").forEach(node => node.classList.toggle("active", node.dataset.view === id));
-  const labels = {overview:"Good morning, builder.", projects:"Build with a clear starting point.", pipelines:"Every run, made legible.", models:"Promote with confidence.", agents:"Understand every agent turn.", features:"One source of truth for features.", storage:"Artifacts and live endpoints.", realtime:"Score events as they happen.", catalog:"Reuse what your team knows.", platform:"Connect the production pieces.", profile:"Know exactly what you can use.", settings:"Your account, tools, and preferences.", access:"Provision only what people need."};
+  const labels = {overview:"Good morning, builder.", projects:"Build with a clear starting point.", pipelines:"Every run, made legible.", models:"Promote with confidence.", agents:"Understand every agent turn.", features:"One source of truth for features.", storage:"Artifacts and live endpoints.", realtime:"Score events as they happen.", catalog:"Reuse what your team knows.", platform:"Connect the production pieces.", profile:"Know exactly what you can use.", settings:"Your account, tools, and preferences.", blogs:"Write what the engineering team learns.", access:"Provision only what people need."};
   document.querySelector("#page-title").textContent = labels[id] || "Workspace";
   if (viewLoaders[id]) viewLoaders[id]().catch(error => toast(error.message));
 }
@@ -384,6 +384,13 @@ async function loadSettings() {
   document.querySelector("#api-token-list").innerHTML = items.length ? items.map(token => `<div class="token-row"><div class="token-mark">⌁</div><div><b>${escapeHTML(token.name)}</b><small><code>${escapeHTML(token.prefix)}…</code> · ${token.services.map(escapeHTML).join(", ")}</small><small>Expires ${dateTime(token.expires_at)} · ${token.last_used_at ? `Last used ${dateTime(token.last_used_at)}` : "Never used"}</small></div>${token.revoked_at ? status("revoked") : `<button class="danger" data-token-revoke="${escapeHTML(token.id)}">Revoke</button>`}</div>`).join("") : `<div class="empty-state"><b>No personal API keys</b><span>Create a scoped key for the CLI, SDK, or local scripts.</span></div>`;
 }
 
+let blogAdminCache = [];
+async function loadAdminBlogs() {
+  const data = await api("/api/v1/admin/blogs");
+  blogAdminCache = data.items || [];
+  document.querySelector("#blog-admin-table").innerHTML = blogAdminCache.length ? blogAdminCache.map(post => `<tr><td><b>${escapeHTML(post.title)}</b><br><small>/${escapeHTML(post.slug)}</small></td><td>${escapeHTML(post.author)}</td><td>${post.tags.map(tag => `<span class="tag">${escapeHTML(tag)}</span>`).join(" ")}</td><td>${status(post.status)}</td><td>${dateTime(post.updated_at)}</td><td><button data-blog-open="${escapeHTML(post.slug)}">View</button><button data-blog-edit="${escapeHTML(post.id)}">Edit</button><button class="danger" data-blog-delete="${escapeHTML(post.id)}">Delete</button></td></tr>`).join("") : `<tr><td colspan="6" class="empty">No blog posts yet.</td></tr>`;
+}
+
 Object.assign(viewLoaders, {
   overview: loadDashboard, projects: loadProjects, pipelines: loadRuns, models: loadModels,
   agents: loadAgents, features: loadFeatures, storage: loadStorage, realtime: loadRealtime,
@@ -391,6 +398,7 @@ Object.assign(viewLoaders, {
   platform: loadComponents,
   profile: loadMyAccess,
   settings: loadSettings,
+  blogs: loadAdminBlogs,
   access: loadAccess,
 });
 
@@ -591,6 +599,20 @@ document.querySelector("#copy-api-token").addEventListener("click", async () => 
   await navigator.clipboard.writeText(document.querySelector("#api-token-secret").textContent);
   toast("API key copied.");
 });
+document.querySelector("#new-blog-post").addEventListener("click", () => {
+  const form = document.querySelector("#blog-editor-form"); form.reset(); form.elements.id.value = "";
+  form.elements.author.value = "Nexus Engineering"; document.querySelector("#blog-editor-title").textContent = "New post";
+  document.querySelector("#blog-editor-error").textContent = ""; document.querySelector("#blog-editor-dialog").showModal();
+});
+document.querySelector("#blog-editor-form").addEventListener("submit", async event => {
+  event.preventDefault(); const form = event.target, error = document.querySelector("#blog-editor-error");
+  const payload = {title:form.elements.title.value, slug:form.elements.slug.value, status:form.elements.status.value, author:form.elements.author.value, tags:csv(form.elements.tags.value), summary:form.elements.summary.value, content:form.elements.content.value};
+  const id = form.elements.id.value; error.textContent = "";
+  try {
+    await api(id ? `/api/v1/admin/blogs/${encodeURIComponent(id)}` : "/api/v1/admin/blogs", {method:id ? "PUT" : "POST", body:JSON.stringify(payload)});
+    document.querySelector("#blog-editor-dialog").close(); toast(id ? "Blog post updated." : "Blog post created."); await loadAdminBlogs();
+  } catch (failure) { error.textContent = failure.message; }
+});
 
 // Agent chat console
 const chatState = {agentId: "", sessionId: ""};
@@ -663,6 +685,19 @@ document.querySelector("#function-form").addEventListener("submit", async event 
 });
 
 async function handleDynamicClick(event) {
+  const blogOpen = event.target.closest("[data-blog-open]");
+  if (blogOpen) { window.open(`/blog.html?slug=${encodeURIComponent(blogOpen.dataset.blogOpen)}`, "_blank", "noopener"); return; }
+  const blogEdit = event.target.closest("[data-blog-edit]");
+  if (blogEdit) {
+    const post = blogAdminCache.find(item => item.id === blogEdit.dataset.blogEdit); if (!post) return;
+    const form = document.querySelector("#blog-editor-form"); form.elements.id.value = post.id; form.elements.title.value = post.title; form.elements.slug.value = post.slug; form.elements.status.value = post.status; form.elements.author.value = post.author; form.elements.tags.value = post.tags.join(", "); form.elements.summary.value = post.summary; form.elements.content.value = post.content;
+    document.querySelector("#blog-editor-title").textContent = "Edit post"; document.querySelector("#blog-editor-error").textContent = ""; document.querySelector("#blog-editor-dialog").showModal(); return;
+  }
+  const blogDelete = event.target.closest("[data-blog-delete]");
+  if (blogDelete) {
+    if (!confirm("Delete this blog post permanently?")) return;
+    await api(`/api/v1/admin/blogs/${encodeURIComponent(blogDelete.dataset.blogDelete)}`, {method:"DELETE"}); toast("Blog post deleted."); await loadAdminBlogs(); return;
+  }
   const tokenRevoke = event.target.closest("[data-token-revoke]");
   if (tokenRevoke) {
     if (!confirm("Revoke this API key? Any tool using it will immediately lose access.")) return;

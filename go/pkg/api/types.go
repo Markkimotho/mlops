@@ -90,6 +90,30 @@ type CreatedAPIToken struct {
 	Secret string   `json:"secret"`
 }
 
+type BlogPost struct {
+	ID          string     `json:"id"`
+	Slug        string     `json:"slug"`
+	Title       string     `json:"title"`
+	Summary     string     `json:"summary"`
+	Content     string     `json:"content"`
+	Author      string     `json:"author"`
+	Tags        []string   `json:"tags"`
+	Status      string     `json:"status"`
+	CreatedAt   time.Time  `json:"created_at"`
+	UpdatedAt   time.Time  `json:"updated_at"`
+	PublishedAt *time.Time `json:"published_at,omitempty"`
+}
+
+type UpsertBlogPostRequest struct {
+	Slug    string   `json:"slug"`
+	Title   string   `json:"title"`
+	Summary string   `json:"summary"`
+	Content string   `json:"content"`
+	Author  string   `json:"author"`
+	Tags    []string `json:"tags"`
+	Status  string   `json:"status"`
+}
+
 type Project struct {
 	ID           string    `json:"id"`
 	Name         string    `json:"name"`

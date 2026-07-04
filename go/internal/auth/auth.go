@@ -88,7 +88,7 @@ func New(config Config) *Verifier {
 // checks) happens in RBAC, which runs on every deployment profile.
 func (v *Verifier) Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if publicPath(r.URL.Path) {
+		if publicPath(r.Method, r.URL.Path) {
 			next.ServeHTTP(w, r)
 			return
 		}
@@ -123,10 +123,14 @@ func (v *Verifier) Middleware(next http.Handler) http.Handler {
 	})
 }
 
-func publicPath(path string) bool {
+func publicPath(method, path string) bool {
+	if method == http.MethodGet && (path == "/api/v1/blogs" || strings.HasPrefix(path, "/api/v1/blogs/")) {
+		return true
+	}
 	switch path {
 	case "/", "/index.html", "/landing.css", "/landing.js", "/api/v1/health",
-		"/api/openapi.json", "/api-docs.html", "/api-docs.css", "/api-docs.js":
+		"/api/openapi.json", "/api-docs.html", "/api-docs.css", "/api-docs.js",
+		"/blogs.html", "/blog.html", "/blog.css", "/blog.js":
 		return true
 	}
 	return strings.HasPrefix(path, "/auth/")
@@ -316,6 +320,9 @@ func Allowed(principal Principal, method, path string) bool {
 	}
 	if strings.HasPrefix(path, "/api/v1/admin/") {
 		return hasRole(principal, RoleAdmin) || hasRole(principal, RoleOperator)
+	}
+	if method == http.MethodGet && (path == "/api/v1/blogs" || strings.HasPrefix(path, "/api/v1/blogs/")) {
+		return true
 	}
 	if strings.HasPrefix(path, "/api/v1/settings/") {
 		return !hasRole(principal, RoleService) && principal.Credential != "api_token" && len(principal.Roles) > 0

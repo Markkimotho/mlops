@@ -15,6 +15,10 @@ type Repository interface {
 	CreateAPIToken(string, api.CreateAPITokenRequest) (api.CreatedAPIToken, error)
 	RevokeAPIToken(string, string) error
 	ResolveAPIToken(string) (api.APIToken, error)
+	BlogPosts() []api.BlogPost
+	BlogPost(string) (api.BlogPost, error)
+	UpsertBlogPost(string, api.UpsertBlogPostRequest, string) (api.BlogPost, error)
+	DeleteBlogPost(string, string) error
 	Projects() []api.Project
 	Runs() []api.PipelineRun
 	Models() []api.Model

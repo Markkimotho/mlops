@@ -92,6 +92,63 @@ func (p *Postgres) APITokensFor(subject string) []api.APIToken {
 	return result
 }
 
+func (p *Postgres) BlogPosts() []api.BlogPost { return list[api.BlogPost](p, "blog_post") }
+func (p *Postgres) BlogPost(identifier string) (api.BlogPost, error) {
+	if post, err := get[api.BlogPost](p, "blog_post", identifier); err == nil {
+		return post, nil
+	}
+	for _, post := range p.BlogPosts() {
+		if post.Slug == identifier {
+			return post, nil
+		}
+	}
+	return api.BlogPost{}, ErrNotFound
+}
+
+func (p *Postgres) UpsertBlogPost(postID string, req api.UpsertBlogPostRequest, actor string) (api.BlogPost, error) {
+	req, err := validateBlog(req)
+	if err != nil {
+		return api.BlogPost{}, err
+	}
+	for _, existing := range p.BlogPosts() {
+		if existing.Slug == req.Slug && existing.ID != postID {
+			return api.BlogPost{}, ErrConflict
+		}
+	}
+	now := time.Now().UTC()
+	if postID != "" {
+		post, getErr := p.BlogPost(postID)
+		if getErr != nil {
+			return post, getErr
+		}
+		post.Slug, post.Title, post.Summary, post.Content = req.Slug, req.Title, req.Summary, req.Content
+		post.Author, post.Tags, post.Status, post.UpdatedAt = req.Author, req.Tags, req.Status, now
+		if post.Status == "published" && post.PublishedAt == nil {
+			post.PublishedAt = &now
+		}
+		return post, p.write("blog_post", post.ID, post, "blog.updated", actor, map[string]any{"status": post.Status})
+	}
+	post := api.BlogPost{ID: id("blog"), Slug: req.Slug, Title: req.Title, Summary: req.Summary, Content: req.Content, Author: req.Author, Tags: req.Tags, Status: req.Status, CreatedAt: now, UpdatedAt: now}
+	if post.Status == "published" {
+		post.PublishedAt = &now
+	}
+	return post, p.write("blog_post", post.ID, post, "blog.created", actor, map[string]any{"status": post.Status})
+}
+
+func (p *Postgres) DeleteBlogPost(postID, actor string) error {
+	post, err := p.BlogPost(postID)
+	if err != nil {
+		return err
+	}
+	tag, err := p.pool.Exec(context.Background(), `DELETE FROM platform_resources WHERE tenant_id=$1 AND kind='blog_post' AND id=$2`, p.tenant, post.ID)
+	if err != nil || tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	event := api.AuditEvent{ID: id("evt"), Action: "blog.deleted", Resource: "blog_post", ResourceID: post.ID, Actor: actorOrAnonymous(actor), CreatedAt: time.Now().UTC()}
+	_, err = p.pool.Exec(context.Background(), `INSERT INTO audit_events (tenant_id,id,action,resource,resource_id,actor,metadata,created_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`, p.tenant, event.ID, event.Action, event.Resource, event.ResourceID, event.Actor, event.Metadata, event.CreatedAt)
+	return err
+}
+
 func (p *Postgres) CreateAPIToken(subject string, req api.CreateAPITokenRequest) (api.CreatedAPIToken, error) {
 	req, err := validateTokenRequest(req)
 	if err != nil {
