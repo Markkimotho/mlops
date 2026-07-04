@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"math/big"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 	"sync"
@@ -86,12 +87,21 @@ func New(config Config) *Verifier {
 // checks) happens in RBAC, which runs on every deployment profile.
 func (v *Verifier) Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/api/v1/health" || r.URL.Path == "/api/openapi.json" {
+		if publicPath(r.URL.Path) {
 			next.ServeHTTP(w, r)
 			return
 		}
 		token := strings.TrimSpace(strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer "))
 		if token == "" {
+			if cookie, err := r.Cookie(SessionCookieName); err == nil {
+				token = cookie.Value
+			}
+		}
+		if token == "" {
+			if !strings.HasPrefix(r.URL.Path, "/api/") {
+				http.Redirect(w, r, "/auth/login?return_to="+url.QueryEscape(r.URL.RequestURI()), http.StatusFound)
+				return
+			}
 			deny(w, http.StatusUnauthorized, "missing bearer token")
 			return
 		}
@@ -106,6 +116,15 @@ func (v *Verifier) Middleware(next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(w, r.WithContext(WithPrincipal(r.Context(), principal)))
 	})
+}
+
+func publicPath(path string) bool {
+	switch path {
+	case "/", "/index.html", "/landing.css", "/landing.js", "/api/v1/health",
+		"/api/openapi.json", "/api-docs.html", "/api-docs.css", "/api-docs.js":
+		return true
+	}
+	return strings.HasPrefix(path, "/auth/")
 }
 
 // servicePrincipal matches the shared internal token that platform services

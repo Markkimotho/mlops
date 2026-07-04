@@ -60,9 +60,26 @@ func main() {
 			log.Fatal("OIDC_JWKS_URL is required when OIDC_ISSUER is configured")
 		}
 		verifier := auth.New(auth.Config{Issuer: issuer, Audience: os.Getenv("OIDC_AUDIENCE"), JWKSURL: jwksURL, Tenant: os.Getenv("MLAIOPS_TENANT")})
-		handler = verifier.Middleware(handler)
-		log.Printf("OIDC authentication enabled")
+		session, sessionErr := auth.NewSessionManager(auth.SessionConfig{
+			ClientID: os.Getenv("OIDC_CLIENT_ID"), ClientSecret: os.Getenv("OIDC_CLIENT_SECRET"),
+			AuthURL: os.Getenv("OIDC_AUTH_URL"), TokenURL: os.Getenv("OIDC_TOKEN_URL"),
+			RedirectURL: os.Getenv("OIDC_REDIRECT_URL"), Secure: true,
+		}, verifier)
+		if sessionErr != nil {
+			log.Fatalf("configure OIDC browser login: %v", sessionErr)
+		}
+		handler = verifier.Middleware(session.Handler(handler))
+		log.Printf("OIDC authentication and browser login enabled")
 	} else {
+		username := os.Getenv("MLAIOPS_LOCAL_USERNAME")
+		if username == "" {
+			username = "admin"
+		}
+		password := os.Getenv("MLAIOPS_LOCAL_PASSWORD")
+		if password == "" {
+			password = "mlaiops-local"
+		}
+		handler = auth.NewLocalSessionManager(username, password).Handler(handler)
 		log.Printf("WARNING: OIDC authentication disabled; local development mode only")
 	}
 	server := &http.Server{Addr: ":" + port, Handler: handler, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 30 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 90 * time.Second}
