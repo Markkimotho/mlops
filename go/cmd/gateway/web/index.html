@@ -31,7 +31,8 @@
         <button class="nav-item" data-view="realtime"><span>≈</span> Real-Time</button>
         <button class="nav-item" data-view="catalog"><span>▦</span> Catalog</button>
         <button class="nav-item" data-view="platform"><span>◎</span> Platform</button>
-        <button class="nav-item" data-view="access" data-admin-only hidden><span>◈</span> Access</button>
+        <button class="nav-item" data-view="profile"><span>♙</span> My access</button>
+        <button class="nav-item" data-view="access" data-admin-only hidden><span>◈</span> Users &amp; access</button>
       </nav>
       <div class="sidebar-footer">
         <div class="cluster user-chip"><i id="user-dot"></i><span><b id="user-name">…</b><small id="user-role">resolving identity</small></span></div>
@@ -129,8 +130,13 @@ python -m realtime.produce --demo recommendations --count 2</pre></article>
 
       <section id="platform" class="view"><div class="section-heading"><div><p class="eyebrow">HONEST INFRASTRUCTURE</p><h2>Platform connections</h2><p>Nothing green by wishful thinking. Every connection is actively checked.</p></div><button class="primary" id="add-connection" data-perm="connections_write">＋ Add connection</button></div><div class="platform-layout"><div class="panel"><div class="panel-heading"><div><p class="eyebrow">ONBOARDING</p><h3>Production readiness</h3></div><strong id="readiness-percent">0%</strong></div><ol id="readiness-list" class="checklist"></ol></div><div><div id="connection-grid" class="card-grid connection-grid"></div><div id="component-grid" class="component-grid"></div></div></div></section>
 
+      <section id="profile" class="view">
+        <div class="section-heading"><div><p class="eyebrow">YOUR AUTHORIZATION</p><h2>My access</h2><p>Your effective role, assigned services, project scope, and resource allocation.</p></div></div>
+        <div id="my-access-summary"></div>
+      </section>
+
       <section id="access" class="view">
-        <div class="section-heading"><div><p class="eyebrow">IDENTITY &amp; CAPACITY</p><h2>User access</h2><p>Assign services, projects, storage, and workspace compute. Unassigned access is denied.</p></div><button class="primary" id="add-user-access" data-perm="access_manage">＋ Provision user</button></div>
+        <div class="section-heading"><div><p class="eyebrow">IDENTITY &amp; CAPACITY</p><h2>Users &amp; access</h2><p>Assign services, projects, storage, and workspace compute. Unassigned access is denied.</p></div><button class="primary" id="add-user-access" data-perm="access_manage">＋ Provision user</button></div>
         <article class="panel table-wrap"><table><thead><tr><th>User</th><th>Role</th><th>Services</th><th>Compute</th><th>Storage</th><th>Status</th><th></th></tr></thead><tbody id="access-table"></tbody></table></article>
       </section>
     </main>

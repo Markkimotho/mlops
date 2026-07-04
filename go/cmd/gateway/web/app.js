@@ -45,7 +45,7 @@ function applyPermissions() {
   document.querySelector("#menu-user").textContent = `${name} · ${me.roles.join(", ")}`;
   document.querySelectorAll("[data-admin-only]").forEach(node => { node.hidden = !isAdmin(); });
   document.querySelectorAll(".nav-item[data-view]").forEach(node => {
-    if (node.dataset.view !== "access") node.hidden = !hasService(node.dataset.view);
+    if (!["access", "profile"].includes(node.dataset.view)) node.hidden = !hasService(node.dataset.view);
   });
   document.querySelector("#workbench-link").hidden = !hasService("workbench");
   document.querySelector("#ide-link").hidden = !hasService("ide");
@@ -61,12 +61,12 @@ let activeView = "overview";
 const viewLoaders = {};
 
 function showView(id) {
-  if (id !== "access" && !hasService(id)) { toast("This service has not been assigned to you."); return; }
+  if (!["access", "profile"].includes(id) && !hasService(id)) { toast("This service has not been assigned to you."); return; }
   if (id === "access" && !isAdmin()) { toast("Administrator access is required."); return; }
   activeView = id;
   document.querySelectorAll(".view").forEach(node => node.classList.toggle("active", node.id === id));
   document.querySelectorAll(".nav-item").forEach(node => node.classList.toggle("active", node.dataset.view === id));
-  const labels = {overview:"Good morning, builder.", projects:"Build with a clear starting point.", pipelines:"Every run, made legible.", models:"Promote with confidence.", agents:"Understand every agent turn.", features:"One source of truth for features.", storage:"Artifacts and live endpoints.", realtime:"Score events as they happen.", catalog:"Reuse what your team knows.", platform:"Connect the production pieces.", access:"Provision only what people need."};
+  const labels = {overview:"Good morning, builder.", projects:"Build with a clear starting point.", pipelines:"Every run, made legible.", models:"Promote with confidence.", agents:"Understand every agent turn.", features:"One source of truth for features.", storage:"Artifacts and live endpoints.", realtime:"Score events as they happen.", catalog:"Reuse what your team knows.", platform:"Connect the production pieces.", profile:"Know exactly what you can use.", access:"Provision only what people need."};
   document.querySelector("#page-title").textContent = labels[id] || "Workspace";
   if (viewLoaders[id]) viewLoaders[id]().catch(error => toast(error.message));
 }
@@ -303,11 +303,41 @@ async function loadAccess() {
   </tr>`).join("") : `<tr><td colspan="7" class="empty">No users have been provisioned.</td></tr>`;
 }
 
+async function loadMyAccess() {
+  me = {...me, ...await api("/api/v1/me")};
+  const grant = me.entitlements;
+  const services = isAdmin() ? accessServices : (me.services || []);
+  const roleState = grant?.disabled ? "suspended" : (me.provisioned || isAdmin() ? "active" : "not_provisioned");
+  const allocation = grant ? `
+    <article class="panel access-allocation">
+      <div class="panel-heading"><div><p class="eyebrow">COMPUTE ALLOCATION</p><h3>Workspace capacity</h3></div>${status(roleState)}</div>
+      <div class="allocation-grid">
+        <div><strong>${grant.compute.vcpus}</strong><span>vCPUs</span></div>
+        <div><strong>${grant.compute.memory_gb}</strong><span>GB memory</span></div>
+        <div><strong>${grant.compute.max_vms}</strong><span>VMs</span></div>
+        <div><strong>${grant.compute.max_projects}</strong><span>Projects</span></div>
+        <div><strong>${grant.compute.max_concurrent_runs}</strong><span>Concurrent runs</span></div>
+        <div><strong>${grant.storage.size_gb}</strong><span>GB storage</span></div>
+      </div>
+    </article>` : `
+    <article class="panel access-allocation"><p class="eyebrow">COMPUTE ALLOCATION</p><h3>Administrative access</h3><p>Administrators are not constrained by user workspace quotas.</p></article>`;
+  document.querySelector("#my-access-summary").innerHTML = `
+    <div class="access-identity panel">
+      <div><span class="role-badge ${escapeHTML(me.roles[0] || "unknown")}">${escapeHTML(me.roles.join(", ") || "no role")}</span><h3>${escapeHTML(me.email || me.subject || "Unknown identity")}</h3><p><code>${escapeHTML(me.subject)}</code> · ${escapeHTML(me.mode)} authentication</p></div>
+      <div>${status(roleState)}<small>${me.provisioned ? "Administrator-provisioned profile" : isAdmin() ? "Full platform administrator" : "Contact an administrator for access"}</small></div>
+    </div>
+    <div class="split">
+      <article class="panel"><p class="eyebrow">ASSIGNED SERVICES</p><h3>${services.length} services available</h3><div class="service-grant-grid">${services.map(service => `<button data-view-target="${escapeHTML(service)}" ${["workbench","ide"].includes(service) ? "disabled" : ""}><span>✓</span>${escapeHTML(service)}</button>`).join("") || `<p class="empty">No services assigned.</p>`}</div></article>
+      <article class="panel"><p class="eyebrow">PROJECT SCOPE</p><h3>${grant?.project_ids?.length || 0} explicitly assigned</h3><div class="tags">${(grant?.project_ids || []).map(id => `<span class="tag">${escapeHTML(id)}</span>`).join("") || `<span class="tag">${isAdmin() ? "All projects" : "Owned projects only"}</span>`}</div><p class="eyebrow access-subhead">STORAGE BUCKETS</p><div class="tags">${(grant?.storage?.buckets || []).map(name => `<span class="tag">${escapeHTML(name)}</span>`).join("") || `<span class="tag">${isAdmin() ? "All buckets" : "None assigned"}</span>`}</div></article>
+    </div>${allocation}`;
+}
+
 Object.assign(viewLoaders, {
   overview: loadDashboard, projects: loadProjects, pipelines: loadRuns, models: loadModels,
   agents: loadAgents, features: loadFeatures, storage: loadStorage, realtime: loadRealtime,
   catalog: () => loadCatalog(document.querySelector("[data-kind].active")?.dataset.kind || ""),
   platform: loadComponents,
+  profile: loadMyAccess,
   access: loadAccess,
 });
 
@@ -533,6 +563,8 @@ document.querySelector("#function-form").addEventListener("submit", async event 
 });
 
 async function handleDynamicClick(event) {
+  const viewTarget = event.target.closest("#my-access-summary [data-view-target]");
+  if (viewTarget) { showView(viewTarget.dataset.viewTarget); return; }
   const accessEdit = event.target.closest("[data-access-edit]");
   if (accessEdit) {
     const item = accessCache.find(value => value.subject === accessEdit.dataset.accessEdit);
