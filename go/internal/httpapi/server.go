@@ -43,6 +43,9 @@ func New(data store.Repository, static fs.FS) http.Handler {
 	mux.HandleFunc("POST /api/v1/access-requests", server.createAccessRequest)
 	mux.HandleFunc("GET /api/v1/admin/access-requests", server.accessRequests)
 	mux.HandleFunc("PATCH /api/v1/admin/access-requests/{id}", server.reviewAccessRequest)
+	mux.HandleFunc("GET /api/v1/settings/tokens", server.apiTokens)
+	mux.HandleFunc("POST /api/v1/settings/tokens", server.createAPIToken)
+	mux.HandleFunc("DELETE /api/v1/settings/tokens/{id}", server.revokeAPIToken)
 	mux.HandleFunc("GET /api/v1/dashboard", server.dashboard)
 	mux.HandleFunc("GET /api/v1/onboarding/readiness", server.readiness)
 	mux.HandleFunc("GET /api/v1/projects", server.projects)
@@ -188,6 +191,55 @@ func (s *Server) reviewAccessRequest(w http.ResponseWriter, r *http.Request) {
 	}
 	request, err := s.store.ReviewAccessRequest(r.PathValue("id"), req, actor(r))
 	writeMutation(w, request, err, http.StatusOK)
+}
+
+func (s *Server) apiTokens(w http.ResponseWriter, r *http.Request) {
+	items := s.store.APITokensFor(principal(r).Subject)
+	for i := range items {
+		items[i].SecretHash = ""
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"items": items, "total": len(items)})
+}
+
+func (s *Server) createAPIToken(w http.ResponseWriter, r *http.Request) {
+	var req api.CreateAPITokenRequest
+	if err := decode(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_request", err.Error())
+		return
+	}
+	value := principal(r)
+	if !tokenScopesAllowed(s.store, value, req.Services, req.ProjectIDs) {
+		writeError(w, http.StatusForbidden, "invalid_scope", "token scope exceeds your effective access")
+		return
+	}
+	created, err := s.store.CreateAPIToken(value.Subject, req)
+	created.Token.SecretHash = ""
+	writeMutation(w, created, err, http.StatusCreated)
+}
+
+func (s *Server) revokeAPIToken(w http.ResponseWriter, r *http.Request) {
+	if err := s.store.RevokeAPIToken(principal(r).Subject, r.PathValue("id")); err != nil {
+		writeMutation(w, struct{}{}, err, http.StatusNoContent)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func tokenScopesAllowed(repository store.Repository, value auth.Principal, services, projectIDs []string) bool {
+	if privileged(value) {
+		return true
+	}
+	for _, requested := range services {
+		if !slices.Contains(value.Services, requested) {
+			return false
+		}
+	}
+	for _, requested := range projectIDs {
+		if !projectAllowed(repository, value, requested) {
+			return false
+		}
+	}
+	return true
 }
 
 func (s *Server) health(w http.ResponseWriter, _ *http.Request) {

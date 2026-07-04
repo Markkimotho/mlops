@@ -82,6 +82,7 @@ func main() {
 		handler = auth.NewLocalSessionManager(username, password).Handler(handler)
 		log.Printf("WARNING: OIDC authentication disabled; local development mode only")
 	}
+	handler = auth.APITokenMiddleware(repository.ResolveAPIToken, handler)
 	server := &http.Server{Addr: ":" + port, Handler: handler, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 30 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 90 * time.Second}
 	go func() {
 		<-ctx.Done()

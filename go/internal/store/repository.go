@@ -11,6 +11,10 @@ type Repository interface {
 	AccessRequestsFor(string) []api.AccessRequest
 	CreateAccessRequest(string, string, api.CreateAccessRequest) (api.AccessRequest, error)
 	ReviewAccessRequest(string, api.ReviewAccessRequest, string) (api.AccessRequest, error)
+	APITokensFor(string) []api.APIToken
+	CreateAPIToken(string, api.CreateAPITokenRequest) (api.CreatedAPIToken, error)
+	RevokeAPIToken(string, string) error
+	ResolveAPIToken(string) (api.APIToken, error)
 	Projects() []api.Project
 	Runs() []api.PipelineRun
 	Models() []api.Model

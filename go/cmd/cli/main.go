@@ -52,6 +52,9 @@ func main() {
 	fatal(err)
 	request.Header.Set("Content-Type", "application/json")
 	request.Header.Set("X-MLAIOps-Actor", env("USER", "cli"))
+	if token := os.Getenv("MLAIOPS_TOKEN"); token != "" {
+		request.Header.Set("Authorization", "Bearer "+token)
+	}
 	response, err := client.Do(request)
 	fatal(err)
 	defer response.Body.Close()

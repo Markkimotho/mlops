@@ -19,6 +19,7 @@ var ErrConflict = errors.New("resource already exists")
 type state struct {
 	UserAccess     []api.UserAccess    `json:"user_access"`
 	AccessRequests []api.AccessRequest `json:"access_requests"`
+	APITokens      []api.APIToken      `json:"api_tokens"`
 	Projects       []api.Project       `json:"projects"`
 	Runs           []api.PipelineRun   `json:"runs"`
 	Models         []api.Model         `json:"models"`

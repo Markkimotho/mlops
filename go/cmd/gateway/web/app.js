@@ -42,11 +42,12 @@ function applyPermissions() {
   const name = me.email || me.subject || "anonymous";
   document.querySelector("#user-name").textContent = name;
   document.querySelector("#user-role").textContent = `${me.roles.join(", ") || "no role"} · ${me.mode} mode`;
-  document.querySelector("#menu-user").textContent = `${name} · ${me.roles.join(", ")}`;
+  document.querySelector("#menu-user").textContent = name;
+  document.querySelector("#account-avatar").textContent = name.trim().charAt(0).toUpperCase() || "U";
   document.querySelectorAll(".logout-action").forEach(link => { link.hidden = false; });
   document.querySelectorAll("[data-admin-only]").forEach(node => { node.hidden = !isAdmin(); });
   document.querySelectorAll(".nav-item[data-view]").forEach(node => {
-    if (!["access", "profile"].includes(node.dataset.view)) node.hidden = !hasService(node.dataset.view);
+    if (!["access", "profile", "settings"].includes(node.dataset.view)) node.hidden = !hasService(node.dataset.view);
   });
   document.querySelector("#workbench-link").hidden = !hasService("workbench");
   document.querySelector("#ide-link").hidden = !hasService("ide");
@@ -62,12 +63,12 @@ let activeView = "overview";
 const viewLoaders = {};
 
 function showView(id) {
-  if (!["access", "profile"].includes(id) && !hasService(id)) { toast("This service has not been assigned to you."); return; }
+  if (!["access", "profile", "settings"].includes(id) && !hasService(id)) { toast("This service has not been assigned to you."); return; }
   if (id === "access" && !isAdmin()) { toast("Administrator access is required."); return; }
   activeView = id;
   document.querySelectorAll(".view").forEach(node => node.classList.toggle("active", node.id === id));
   document.querySelectorAll(".nav-item").forEach(node => node.classList.toggle("active", node.dataset.view === id));
-  const labels = {overview:"Good morning, builder.", projects:"Build with a clear starting point.", pipelines:"Every run, made legible.", models:"Promote with confidence.", agents:"Understand every agent turn.", features:"One source of truth for features.", storage:"Artifacts and live endpoints.", realtime:"Score events as they happen.", catalog:"Reuse what your team knows.", platform:"Connect the production pieces.", profile:"Know exactly what you can use.", access:"Provision only what people need."};
+  const labels = {overview:"Good morning, builder.", projects:"Build with a clear starting point.", pipelines:"Every run, made legible.", models:"Promote with confidence.", agents:"Understand every agent turn.", features:"One source of truth for features.", storage:"Artifacts and live endpoints.", realtime:"Score events as they happen.", catalog:"Reuse what your team knows.", platform:"Connect the production pieces.", profile:"Know exactly what you can use.", settings:"Your account, tools, and preferences.", access:"Provision only what people need."};
   document.querySelector("#page-title").textContent = labels[id] || "Workspace";
   if (viewLoaders[id]) viewLoaders[id]().catch(error => toast(error.message));
 }
@@ -345,19 +346,61 @@ async function loadMyAccess() {
     </div>${latestRequest ? `<article class="panel access-request-state"><div><p class="eyebrow">LATEST ACCESS REQUEST</p><h3>${escapeHTML(latestRequest.requested_services.join(", "))}</h3><p>${escapeHTML(latestRequest.reason)}</p></div><div>${status(latestRequest.status)}<small>${dateTime(latestRequest.updated_at)}</small></div></article>` : ""}${allocation}`;
 }
 
+const preferenceKey = "nexus.console.preferences";
+function readPreferences() {
+  try { return JSON.parse(localStorage.getItem(preferenceKey) || "{}"); } catch { return {}; }
+}
+function applyPreferences() {
+  const prefs = readPreferences();
+  document.body.classList.toggle("compact-ui", Boolean(prefs.compact));
+  document.body.classList.toggle("reduce-motion", Boolean(prefs.reduceMotion));
+}
+function writePreferences() {
+  const prefs = {
+    compact:document.querySelector("#setting-compact").checked,
+    reduceMotion:document.querySelector("#setting-motion").checked,
+    live:document.querySelector("#setting-live").checked,
+    startView:document.querySelector("#setting-start-view").value,
+  };
+  localStorage.setItem(preferenceKey, JSON.stringify(prefs)); applyPreferences();
+  if (prefs.live && hasService("overview")) connectEvents();
+  if (!prefs.live && eventSource) { eventSource.close(); eventSource = null; }
+}
+async function loadSettings() {
+  const data = await api("/api/v1/settings/tokens");
+  const prefs = readPreferences();
+  document.querySelector("#setting-compact").checked = Boolean(prefs.compact);
+  document.querySelector("#setting-motion").checked = Boolean(prefs.reduceMotion);
+  document.querySelector("#setting-live").checked = prefs.live !== false;
+  document.querySelector("#setting-start-view").value = prefs.startView || "overview";
+  document.querySelector("#settings-profile").innerHTML = `<dl class="settings-definition"><div><dt>Name</dt><dd>${escapeHTML(me.email || me.subject)}</dd></div><div><dt>Subject</dt><dd><code>${escapeHTML(me.subject)}</code></dd></div><div><dt>Role</dt><dd>${me.roles.map(role => `<span class="tag">${escapeHTML(role)}</span>`).join(" ")}</dd></div><div><dt>Authentication</dt><dd>${escapeHTML(me.mode)}</dd></div></dl>`;
+  document.querySelector("#settings-auth-mode").textContent = `${me.mode.toUpperCase()} session`;
+  document.querySelector("#settings-session-identity").textContent = me.email || me.subject;
+  document.querySelector("#settings-jupyter").href = `http://${location.hostname}:8888`;
+  document.querySelector("#settings-ide").href = `http://${location.hostname}:13337`;
+  document.querySelector("#settings-jupyter").hidden = !hasService("workbench");
+  document.querySelector("#settings-ide").hidden = !hasService("ide");
+  const items = data.items || [];
+  document.querySelector("#api-token-list").innerHTML = items.length ? items.map(token => `<div class="token-row"><div class="token-mark">⌁</div><div><b>${escapeHTML(token.name)}</b><small><code>${escapeHTML(token.prefix)}…</code> · ${token.services.map(escapeHTML).join(", ")}</small><small>Expires ${dateTime(token.expires_at)} · ${token.last_used_at ? `Last used ${dateTime(token.last_used_at)}` : "Never used"}</small></div>${token.revoked_at ? status("revoked") : `<button class="danger" data-token-revoke="${escapeHTML(token.id)}">Revoke</button>`}</div>`).join("") : `<div class="empty-state"><b>No personal API keys</b><span>Create a scoped key for the CLI, SDK, or local scripts.</span></div>`;
+}
+
 Object.assign(viewLoaders, {
   overview: loadDashboard, projects: loadProjects, pipelines: loadRuns, models: loadModels,
   agents: loadAgents, features: loadFeatures, storage: loadStorage, realtime: loadRealtime,
   catalog: () => loadCatalog(document.querySelector("[data-kind].active")?.dataset.kind || ""),
   platform: loadComponents,
   profile: loadMyAccess,
+  settings: loadSettings,
   access: loadAccess,
 });
 
 // ---- live updates over SSE --------------------------------------------------
 let lastDigest = "";
+let eventSource = null;
 function connectEvents() {
+  if (eventSource) eventSource.close();
   const source = new EventSource("/api/v1/events");
+  eventSource = source;
   const indicator = document.querySelector("#live-indicator");
   source.onmessage = event => {
     indicator.textContent = "●  Local Cluster  live";
@@ -410,6 +453,7 @@ async function showAbout() {
 
 document.querySelector("#workbench-link").href = `http://${location.hostname}:8888`;
 document.querySelector("#ide-link").href = `http://${location.hostname}:13337`;
+document.querySelector("#account-button").addEventListener("click", () => showView("settings"));
 document.querySelector("#service-grants").innerHTML = accessServices.map(service => `<label class="inline-check"><input type="checkbox" name="services" value="${service}"> ${service}</label>`).join("");
 document.querySelector("#request-service-grants").innerHTML = accessServices.map(service => `<label class="inline-check"><input type="checkbox" name="services" value="${service}"> ${service}</label>`).join("");
 sidebarToggle.addEventListener("click", toggleSidebar);
@@ -523,6 +567,30 @@ document.querySelector("#connection-form").addEventListener("submit", async even
 });
 
 document.querySelector("#metric-select").addEventListener("change", event => metricChart(cachedModels, event.target.value));
+document.querySelectorAll("#setting-compact,#setting-motion,#setting-live,#setting-start-view").forEach(control => control.addEventListener("change", writePreferences));
+document.querySelector("#create-api-token").addEventListener("click", () => {
+  const form = document.querySelector("#api-token-form"); form.reset();
+  const scopes = accessServices.filter(service => !["workbench","ide"].includes(service) && hasService(service));
+  document.querySelector("#token-service-scopes").innerHTML = scopes.map(service => `<label class="inline-check"><input type="checkbox" name="services" value="${escapeHTML(service)}"> ${escapeHTML(service)}</label>`).join("");
+  document.querySelector("#api-token-error").textContent = "";
+  document.querySelector("#api-token-dialog").showModal();
+});
+document.querySelector("#api-token-form").addEventListener("submit", async event => {
+  event.preventDefault(); const form = event.target, error = document.querySelector("#api-token-error");
+  error.textContent = "";
+  const payload = {name:form.elements.name.value, expires_in_days:Number(form.elements.expires_in_days.value), project_ids:csv(form.elements.project_ids.value), services:[...form.querySelectorAll("[name='services']:checked")].map(input => input.value)};
+  try {
+    const created = await api("/api/v1/settings/tokens", {method:"POST", body:JSON.stringify(payload)});
+    document.querySelector("#api-token-dialog").close();
+    document.querySelector("#api-token-secret").textContent = created.secret;
+    document.querySelector("#api-token-secret-dialog").showModal();
+    await loadSettings();
+  } catch (failure) { error.textContent = failure.message; }
+});
+document.querySelector("#copy-api-token").addEventListener("click", async () => {
+  await navigator.clipboard.writeText(document.querySelector("#api-token-secret").textContent);
+  toast("API key copied.");
+});
 
 // Agent chat console
 const chatState = {agentId: "", sessionId: ""};
@@ -595,6 +663,12 @@ document.querySelector("#function-form").addEventListener("submit", async event 
 });
 
 async function handleDynamicClick(event) {
+  const tokenRevoke = event.target.closest("[data-token-revoke]");
+  if (tokenRevoke) {
+    if (!confirm("Revoke this API key? Any tool using it will immediately lose access.")) return;
+    await api(`/api/v1/settings/tokens/${encodeURIComponent(tokenRevoke.dataset.tokenRevoke)}`, {method:"DELETE"});
+    toast("API key revoked."); await loadSettings(); return;
+  }
   const viewTarget = event.target.closest("#my-access-summary [data-view-target]");
   if (viewTarget) { showView(viewTarget.dataset.viewTarget); return; }
   const accessEdit = event.target.closest("[data-access-edit]");
@@ -771,10 +845,12 @@ document.addEventListener("click", event => {
   handleDynamicClick(event).catch(failure => toast(failure.message));
 });
 
+applyPreferences();
 loadMe().then(async () => {
   const initial = ["overview","projects","pipelines"].filter(hasService);
   await Promise.all(initial.map(service => viewLoaders[service]()));
-  const first = initial[0] || (isAdmin() ? "access" : me.services[0]);
+  const preferred = readPreferences().startView;
+  const first = preferred && (["profile","settings"].includes(preferred) || hasService(preferred)) ? preferred : (initial[0] || (isAdmin() ? "access" : me.services[0]));
   if (first) showView(first);
-  if (hasService("overview")) connectEvents();
+  if (hasService("overview") && readPreferences().live !== false) connectEvents();
 }).catch(error => toast(error.message));

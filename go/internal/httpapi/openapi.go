@@ -14,6 +14,8 @@ func (s *Server) openapi(w http.ResponseWriter, _ *http.Request) {
 			"/api/v1/access-requests":              map[string]any{"get": map[string]any{"summary": "List caller access requests"}, "post": map[string]any{"summary": "Request platform access"}},
 			"/api/v1/admin/access-requests":        map[string]any{"get": map[string]any{"summary": "List access requests (admin only)"}},
 			"/api/v1/admin/access-requests/{id}":   map[string]any{"patch": map[string]any{"summary": "Approve or reject an access request (admin only)"}},
+			"/api/v1/settings/tokens":              map[string]any{"get": map[string]any{"summary": "List personal API keys"}, "post": map[string]any{"summary": "Create a scoped personal API key"}},
+			"/api/v1/settings/tokens/{id}":         map[string]any{"delete": map[string]any{"summary": "Revoke a personal API key"}},
 			"/api/v1/dashboard":                    map[string]any{"get": map[string]any{"summary": "Workspace summary"}},
 			"/api/v1/onboarding/readiness":         map[string]any{"get": map[string]any{"summary": "Onboarding readiness"}},
 			"/api/v1/projects":                     map[string]any{"get": map[string]any{"summary": "List projects"}, "post": map[string]any{"summary": "Create project"}},

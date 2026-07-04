@@ -64,6 +64,32 @@ type ReviewAccessRequest struct {
 	Note   string `json:"note"`
 }
 
+type APIToken struct {
+	ID         string     `json:"id"`
+	Subject    string     `json:"subject"`
+	Name       string     `json:"name"`
+	Prefix     string     `json:"prefix"`
+	SecretHash string     `json:"secret_hash,omitempty"`
+	Services   []string   `json:"services"`
+	ProjectIDs []string   `json:"project_ids,omitempty"`
+	CreatedAt  time.Time  `json:"created_at"`
+	ExpiresAt  time.Time  `json:"expires_at"`
+	LastUsedAt *time.Time `json:"last_used_at,omitempty"`
+	RevokedAt  *time.Time `json:"revoked_at,omitempty"`
+}
+
+type CreateAPITokenRequest struct {
+	Name          string   `json:"name"`
+	Services      []string `json:"services"`
+	ProjectIDs    []string `json:"project_ids,omitempty"`
+	ExpiresInDays int      `json:"expires_in_days"`
+}
+
+type CreatedAPIToken struct {
+	Token  APIToken `json:"token"`
+	Secret string   `json:"secret"`
+}
+
 type Project struct {
 	ID           string    `json:"id"`
 	Name         string    `json:"name"`

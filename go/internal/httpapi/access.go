@@ -41,6 +41,9 @@ func allowedProjectIDs(repository store.Repository, value auth.Principal) map[st
 	for _, id := range value.ProjectIDs {
 		allowed[id] = true
 	}
+	if value.Credential == "api_token" {
+		return allowed
+	}
 	for _, project := range repository.Projects() {
 		if project.OwnerSubject == value.Subject {
 			allowed[project.ID] = true

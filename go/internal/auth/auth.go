@@ -41,6 +41,7 @@ type Principal struct {
 	ProjectIDs  []string
 	Disabled    bool
 	Provisioned bool
+	Credential  string
 }
 
 type contextKey struct{}
@@ -88,6 +89,10 @@ func New(config Config) *Verifier {
 func (v *Verifier) Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if publicPath(r.URL.Path) {
+			next.ServeHTTP(w, r)
+			return
+		}
+		if _, ok := PrincipalFrom(r.Context()); ok {
 			next.ServeHTTP(w, r)
 			return
 		}
@@ -170,7 +175,7 @@ func RBACWithResolver(next http.Handler, resolve AccessResolver) http.Handler {
 			}
 			r = r.WithContext(WithPrincipal(r.Context(), principal))
 		}
-		if resolve != nil && principal.Subject != "" && !hasRole(principal, RoleService) {
+		if resolve != nil && principal.Subject != "" && !hasRole(principal, RoleService) && principal.Credential != "api_token" {
 			if roles, services, projectIDs, disabled, found := resolve(principal.Subject); found {
 				principal.Roles, principal.Services, principal.ProjectIDs = roles, services, projectIDs
 				principal.Disabled, principal.Provisioned = disabled, true
@@ -311,6 +316,9 @@ func Allowed(principal Principal, method, path string) bool {
 	}
 	if strings.HasPrefix(path, "/api/v1/admin/") {
 		return hasRole(principal, RoleAdmin) || hasRole(principal, RoleOperator)
+	}
+	if strings.HasPrefix(path, "/api/v1/settings/") {
+		return !hasRole(principal, RoleService) && principal.Credential != "api_token" && len(principal.Roles) > 0
 	}
 	if path == "/api/v1/access-requests" && (method == http.MethodGet || method == http.MethodPost) {
 		return !hasRole(principal, RoleService) && len(principal.Roles) > 0

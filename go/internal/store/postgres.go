@@ -82,6 +82,56 @@ func (p *Postgres) AccessRequests() []api.AccessRequest {
 	return list[api.AccessRequest](p, "access_request")
 }
 
+func (p *Postgres) APITokensFor(subject string) []api.APIToken {
+	result := make([]api.APIToken, 0)
+	for _, token := range list[api.APIToken](p, "api_token") {
+		if token.Subject == subject {
+			result = append(result, token)
+		}
+	}
+	return result
+}
+
+func (p *Postgres) CreateAPIToken(subject string, req api.CreateAPITokenRequest) (api.CreatedAPIToken, error) {
+	req, err := validateTokenRequest(req)
+	if err != nil {
+		return api.CreatedAPIToken{}, err
+	}
+	tokenID, prefix, secret, hash, err := generateAPIToken()
+	if err != nil {
+		return api.CreatedAPIToken{}, err
+	}
+	now := time.Now().UTC()
+	token := api.APIToken{ID: tokenID, Subject: subject, Name: req.Name, Prefix: prefix, SecretHash: hash, Services: req.Services, ProjectIDs: req.ProjectIDs, CreatedAt: now, ExpiresAt: now.Add(time.Duration(req.ExpiresInDays) * 24 * time.Hour)}
+	return api.CreatedAPIToken{Token: token, Secret: secret}, p.write("api_token", token.ID, token, "api_token.created", subject, map[string]any{"services": token.Services, "expires_at": token.ExpiresAt})
+}
+
+func (p *Postgres) RevokeAPIToken(subject, tokenID string) error {
+	token, err := get[api.APIToken](p, "api_token", tokenID)
+	if err != nil || token.Subject != subject {
+		return ErrNotFound
+	}
+	if token.RevokedAt == nil {
+		now := time.Now().UTC()
+		token.RevokedAt = &now
+	}
+	return p.write("api_token", token.ID, token, "api_token.revoked", subject, nil)
+}
+
+func (p *Postgres) ResolveAPIToken(secret string) (api.APIToken, error) {
+	now := time.Now().UTC()
+	for _, token := range list[api.APIToken](p, "api_token") {
+		if strings.HasPrefix(secret, token.Prefix+"_") && token.RevokedAt == nil && now.Before(token.ExpiresAt) && tokenMatches(token, secret) {
+			token.LastUsedAt = &now
+			if payload, err := json.Marshal(token); err == nil {
+				_, _ = p.pool.Exec(context.Background(), `UPDATE platform_resources SET payload=$4,updated_at=now() WHERE tenant_id=$1 AND kind=$2 AND id=$3`, p.tenant, "api_token", token.ID, payload)
+			}
+			return token, nil
+		}
+	}
+	return api.APIToken{}, ErrNotFound
+}
+
 func (p *Postgres) AccessRequestsFor(subject string) []api.AccessRequest {
 	result := make([]api.AccessRequest, 0)
 	for _, request := range p.AccessRequests() {

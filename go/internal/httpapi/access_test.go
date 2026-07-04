@@ -133,3 +133,29 @@ func TestUserCanRequestAccessAndAdminCanReview(t *testing.T) {
 		t.Fatalf("review failed: %d %s", review.Code, review.Body.String())
 	}
 }
+
+func TestPersonalAPITokenAPIHidesHashAndRevokes(t *testing.T) {
+	server := testServer()
+	create := httptest.NewRecorder()
+	server.ServeHTTP(create, httptest.NewRequest(http.MethodPost, "/api/v1/settings/tokens", strings.NewReader(
+		`{"name":"laptop CLI","services":["projects"],"project_ids":["prj-demo"],"expires_in_days":30}`,
+	)))
+	if create.Code != http.StatusCreated || !strings.Contains(create.Body.String(), `"secret":"nxs_`) ||
+		strings.Contains(create.Body.String(), "secret_hash") {
+		t.Fatalf("create token: %d %s", create.Code, create.Body.String())
+	}
+	var created api.CreatedAPIToken
+	if err := json.Unmarshal(create.Body.Bytes(), &created); err != nil {
+		t.Fatal(err)
+	}
+	list := httptest.NewRecorder()
+	server.ServeHTTP(list, httptest.NewRequest(http.MethodGet, "/api/v1/settings/tokens", nil))
+	if list.Code != http.StatusOK || strings.Contains(list.Body.String(), "secret_hash") {
+		t.Fatalf("list token: %d %s", list.Code, list.Body.String())
+	}
+	revoke := httptest.NewRecorder()
+	server.ServeHTTP(revoke, httptest.NewRequest(http.MethodDelete, "/api/v1/settings/tokens/"+created.Token.ID, nil))
+	if revoke.Code != http.StatusNoContent {
+		t.Fatalf("revoke token: %d %s", revoke.Code, revoke.Body.String())
+	}
+}

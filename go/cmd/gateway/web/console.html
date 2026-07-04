@@ -14,8 +14,7 @@
     <span class="app-spacer"></span>
     <button class="app-action" id="refresh-view">Refresh</button>
     <button class="app-action" id="open-help">Help</button>
-    <span class="menu-user" id="menu-user"></span>
-    <a class="app-action logout-action" href="/auth/logout" hidden>Log out</a>
+    <button class="account-button" id="account-button" type="button" aria-label="Open profile settings"><span class="account-avatar" id="account-avatar">U</span><span class="account-copy"><b id="menu-user">User</b><small>Profile &amp; settings</small></span><span>⌄</span></button>
     <span class="menu-status" id="live-indicator">●&nbsp; Local Cluster&nbsp;&nbsp; live</span>
   </div>
   <div class="shell">
@@ -33,6 +32,7 @@
         <button class="nav-item" data-view="catalog"><span>▦</span> Catalog</button>
         <button class="nav-item" data-view="platform"><span>◎</span> Platform</button>
         <button class="nav-item" data-view="profile"><span>♙</span> My access</button>
+        <button class="nav-item" data-view="settings"><span>⚙</span> Settings</button>
         <button class="nav-item" data-view="access" data-admin-only hidden><span>◈</span> Users &amp; access</button>
       </nav>
       <div class="sidebar-footer">
@@ -138,6 +138,17 @@ python -m realtime.produce --demo recommendations --count 2</pre></article>
         <div id="my-access-summary"></div>
       </section>
 
+      <section id="settings" class="view">
+        <div class="section-heading"><div><p class="eyebrow">ACCOUNT &amp; PLATFORM</p><h2>Settings</h2><p>Manage your identity, API access, console behavior, and workspace entry points.</p></div></div>
+        <div class="settings-layout">
+          <article class="panel settings-card profile-settings-card"><div class="settings-card-heading"><span class="settings-icon">♙</span><div><h3>Profile</h3><p>Your verified platform identity.</p></div></div><div id="settings-profile"></div></article>
+          <article class="panel settings-card api-token-card"><div class="settings-card-heading"><span class="settings-icon">⌁</span><div><h3>Personal API keys</h3><p>Authenticate the CLI, SDKs, scripts, and local development tools.</p></div><button class="primary" id="create-api-token">＋ Create key</button></div><div class="security-note"><b>Keys are shown once.</b> Store them in your OS keychain or secret manager—never in source control.</div><div id="api-token-list" class="settings-list"></div></article>
+          <article class="panel settings-card"><div class="settings-card-heading"><span class="settings-icon">◫</span><div><h3>Console preferences</h3><p>Customize how this browser opens and presents Nexus.</p></div></div><div class="setting-rows"><label class="setting-row"><span><b>Compact interface</b><small>Reduce spacing in tables and navigation.</small></span><input type="checkbox" id="setting-compact"></label><label class="setting-row"><span><b>Reduce motion</b><small>Disable decorative transitions and movement.</small></span><input type="checkbox" id="setting-motion"></label><label class="setting-row"><span><b>Live updates</b><small>Refresh active views when platform events arrive.</small></span><input type="checkbox" id="setting-live" checked></label><label class="setting-row"><span><b>Opening view</b><small>Choose the first page after signing in.</small></span><select id="setting-start-view"><option value="overview">Overview</option><option value="projects">Projects</option><option value="pipelines">Pipelines</option><option value="profile">My access</option><option value="settings">Settings</option></select></label></div></article>
+          <article class="panel settings-card"><div class="settings-card-heading"><span class="settings-icon">◇</span><div><h3>Developer workspaces</h3><p>Open the tools attached to your persistent workspace.</p></div></div><div class="workspace-actions"><a class="button-like" id="settings-jupyter" href="#" target="_blank"><span>J</span><div><b>JupyterLab</b><small>Notebooks and natural-language coding</small></div><i>↗</i></a><a class="button-like" id="settings-ide" href="#" target="_blank"><span>⌘</span><div><b>Browser IDE</b><small>Full workspace editor and terminal</small></div><i>↗</i></a><a class="button-like" href="/api-docs.html" target="_blank"><span>{ }</span><div><b>API reference</b><small>Endpoints, schemas, and examples</small></div><i>↗</i></a></div></article>
+          <article class="panel settings-card danger-settings"><div class="settings-card-heading"><span class="settings-icon">⇥</span><div><h3>Session</h3><p>Authentication and current browser session.</p></div></div><div class="session-row"><div><b id="settings-auth-mode">Authenticated</b><small id="settings-session-identity"></small></div><a class="secondary logout-action" href="/auth/logout">Log out</a></div></article>
+        </div>
+      </section>
+
       <section id="access" class="view">
         <div class="section-heading"><div><p class="eyebrow">IDENTITY &amp; CAPACITY</p><h2>Users &amp; access</h2><p>Assign services, projects, storage, and workspace compute. Unassigned access is denied.</p></div><button class="primary" id="add-user-access" data-perm="access_manage">＋ Provision user</button></div>
         <div class="access-admin-stack">
@@ -206,6 +217,17 @@ python -m realtime.produce --demo recommendations --count 2</pre></article>
       <footer class="modal-footer"><p class="form-error" id="access-request-error"></p><div class="form-actions"><button class="secondary" type="button" data-dialog-close>Cancel</button><button class="primary" type="submit">Submit request</button></div></footer>
     </form>
   </dialog>
+
+  <dialog id="api-token-dialog">
+    <form id="api-token-form" class="provisioning-form compact-modal">
+      <header class="modal-header"><p class="eyebrow">PERSONAL API KEY</p><h2>Create a scoped key</h2><p>Use the smallest scope and shortest lifetime your tool needs.</p></header>
+      <div class="modal-scroll"><section class="form-section"><label>Key name<input name="name" required minlength="3" placeholder="e.g. laptop CLI"></label><label>Expires after<select name="expires_in_days"><option value="7">7 days</option><option value="30" selected>30 days</option><option value="90">90 days</option><option value="365">1 year</option></select></label></section><section class="form-section"><div class="form-section-title"><span>✓</span><div><h3>Service scopes</h3><p>The key cannot exceed your current access.</p></div></div><div class="checkbox-grid" id="token-service-scopes"></div></section><section class="form-section"><label>Project IDs <input name="project_ids" placeholder="Optional: prj-a, prj-b"></label></section></div>
+      <footer class="modal-footer"><p class="form-error" id="api-token-error"></p><div class="form-actions"><button class="secondary" type="button" data-dialog-close>Cancel</button><button class="primary" type="submit">Create key</button></div></footer>
+    </form>
+  </dialog>
+
+  <dialog id="api-token-secret-dialog"><div class="detail-sheet token-secret-sheet"><p class="eyebrow">KEY CREATED</p><h2>Copy your key now</h2><p>This secret will not be shown again.</p><div class="token-secret"><code id="api-token-secret"></code><button id="copy-api-token">Copy</button></div><pre class="hint">export MLAIOPS_TOKEN="your-key"
+mlaiops projects list</pre><div class="form-actions"><button class="primary" type="button" data-dialog-close>I have saved it</button></div></div></dialog>
 
   <dialog id="chat-dialog">
     <div class="detail-sheet chat-sheet">
