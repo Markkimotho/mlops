@@ -31,11 +31,19 @@
         </div>
         <div class="trust-row"><span>Self-hosted</span><span>Open architecture</span><span>Enterprise RBAC</span><span>No vendor lock-in</span></div>
       </div>
-      <div class="product-frame" aria-label="Nexus product overview">
-        <div class="frame-bar"><div class="frame-brand"><b>N</b><span>Nexus</span></div><div class="frame-live"><i></i> Control plane live</div></div>
+      <div class="product-frame" aria-label="Interactive Nexus product preview">
+        <div class="frame-bar"><div class="frame-brand"><b>N</b><span>Nexus</span></div><div class="frame-live"><i></i> Interactive preview</div></div>
         <div class="frame-body">
-          <aside><span class="active">Overview</span><span>Projects</span><span>Pipelines</span><span>Models</span><span>Agents</span><span>Features</span><span>Storage</span></aside>
-          <div class="frame-content">
+          <aside aria-label="Preview sections" role="tablist">
+            <button class="active" type="button" role="tab" aria-selected="true" aria-controls="product-preview-content" data-preview-panel="overview">Overview</button>
+            <button type="button" role="tab" aria-selected="false" aria-controls="product-preview-content" data-preview-panel="projects">Projects</button>
+            <button type="button" role="tab" aria-selected="false" aria-controls="product-preview-content" data-preview-panel="pipelines">Pipelines</button>
+            <button type="button" role="tab" aria-selected="false" aria-controls="product-preview-content" data-preview-panel="models">Models</button>
+            <button type="button" role="tab" aria-selected="false" aria-controls="product-preview-content" data-preview-panel="agents">Agents</button>
+            <button type="button" role="tab" aria-selected="false" aria-controls="product-preview-content" data-preview-panel="features">Features</button>
+            <button type="button" role="tab" aria-selected="false" aria-controls="product-preview-content" data-preview-panel="storage">Storage</button>
+          </aside>
+          <div class="frame-content is-ready" id="product-preview-content" role="tabpanel" aria-live="polite">
             <p class="mini-eyebrow">YOUR GOLDEN PATH</p><h2>From idea to a reliable model.</h2>
             <div class="frame-stats"><div><small>Projects</small><strong>12</strong></div><div><small>Active runs</small><strong>4</strong></div><div><small>Platform health</small><strong class="healthy">9/9</strong></div></div>
             <div class="frame-panels"><article><small>PRODUCTION READINESS</small><strong>Everything connected</strong><div class="progress"><i></i></div></article><article><small>RECENT RUN</small><strong>training-pipeline</strong><span class="success">Succeeded</span></article></div>
@@ -44,9 +52,30 @@
       </div>
     </section>
 
-    <section class="proof-strip">
-      <p>One control plane for the systems your AI team already trusts.</p>
-      <div><span>MLflow</span><span>Kubernetes</span><span>Prefect</span><span>Feast</span><span>Kafka</span><span>Jupyter</span><span>Langfuse</span></div>
+    <section class="proof-strip" aria-labelledby="integrations-heading">
+      <p id="integrations-heading">One control plane for the systems your AI team already trusts.</p>
+      <div class="integration-marquee" aria-label="Supported platform integrations">
+        <div class="integration-track">
+          <div class="integration-group">
+            <a href="https://mlflow.org/" target="_blank" rel="noreferrer"><img src="https://cdn.simpleicons.org/mlflow/0194E2" alt="">MLflow <span aria-hidden="true">↗</span></a>
+            <a href="https://kubernetes.io/" target="_blank" rel="noreferrer"><img src="https://cdn.simpleicons.org/kubernetes/326CE5" alt="">Kubernetes <span aria-hidden="true">↗</span></a>
+            <a href="https://www.prefect.io/" target="_blank" rel="noreferrer"><img src="https://cdn.simpleicons.org/prefect/070E10" alt="">Prefect <span aria-hidden="true">↗</span></a>
+            <a href="https://feast.dev/" target="_blank" rel="noreferrer"><span class="integration-fallback feast-icon" aria-hidden="true">F</span>Feast <span aria-hidden="true">↗</span></a>
+            <a href="https://kafka.apache.org/" target="_blank" rel="noreferrer"><img src="https://cdn.simpleicons.org/apachekafka/231F20" alt="">Kafka <span aria-hidden="true">↗</span></a>
+            <a href="https://jupyter.org/" target="_blank" rel="noreferrer"><img src="https://cdn.simpleicons.org/jupyter/F37626" alt="">Jupyter <span aria-hidden="true">↗</span></a>
+            <a href="https://langfuse.com/" target="_blank" rel="noreferrer"><span class="integration-fallback langfuse-icon" aria-hidden="true">L</span>Langfuse <span aria-hidden="true">↗</span></a>
+          </div>
+          <div class="integration-group" aria-hidden="true">
+            <a href="https://mlflow.org/" tabindex="-1"><img src="https://cdn.simpleicons.org/mlflow/0194E2" alt="">MLflow <span>↗</span></a>
+            <a href="https://kubernetes.io/" tabindex="-1"><img src="https://cdn.simpleicons.org/kubernetes/326CE5" alt="">Kubernetes <span>↗</span></a>
+            <a href="https://www.prefect.io/" tabindex="-1"><img src="https://cdn.simpleicons.org/prefect/070E10" alt="">Prefect <span>↗</span></a>
+            <a href="https://feast.dev/" tabindex="-1"><span class="integration-fallback feast-icon">F</span>Feast <span>↗</span></a>
+            <a href="https://kafka.apache.org/" tabindex="-1"><img src="https://cdn.simpleicons.org/apachekafka/231F20" alt="">Kafka <span>↗</span></a>
+            <a href="https://jupyter.org/" tabindex="-1"><img src="https://cdn.simpleicons.org/jupyter/F37626" alt="">Jupyter <span>↗</span></a>
+            <a href="https://langfuse.com/" tabindex="-1"><span class="integration-fallback langfuse-icon">L</span>Langfuse <span>↗</span></a>
+          </div>
+        </div>
+      </div>
     </section>
 
     <section class="section" id="platform">
